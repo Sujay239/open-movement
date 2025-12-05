@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS teachers (
 
     -- category                    TEXT,
 
-    -- current_school_name         TEXT,
+    current_school_name         TEXT,
 
     profile_status              teacher_profile_status NOT NULL DEFAULT 'ACTIVE',
     is_visible_in_school_portal BOOLEAN NOT NULL DEFAULT TRUE,

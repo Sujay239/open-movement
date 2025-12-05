@@ -30,6 +30,8 @@ tags:
     description: School management
   - name: Analytics
     description: View logs and tracking
+  - name: Admin - Requests
+    description: Admin management of full profile requests
 
 # =====================
 # PATHS
@@ -237,7 +239,7 @@ paths:
           description: View logged
 
   # ---------------------
-  # REQUESTS
+  # REQUESTS (School Portal)
   # ---------------------
   /portal/teachers/{teacherId}/request:
     post:
@@ -549,6 +551,94 @@ paths:
       responses:
         "200":
           description: Subscription updated
+
+  # ---------------------
+  # ADMIN - REQUESTS (NEW)
+  # ---------------------
+  /admin/requests:
+    get:
+      tags: ["Admin - Requests"]
+      summary: List all full profile requests
+      description: >
+        Returns all requests created by schools for teacher full profile access.
+        Can be filtered by status, teacher_id, or school_id.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/RequestStatus'
+        - in: query
+          name: teacher_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: school_id
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: List returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Request'
+
+  /admin/requests/{id}:
+    get:
+      tags: ["Admin - Requests"]
+      summary: Get single request details (Admin)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
+        "404":
+          description: Not found
+    patch:
+      tags: ["Admin - Requests"]
+      summary: Update request status or admin notes
+      description: >
+        Allows admin to manage the lifecycle of a request
+        (e.g., mark as TEACHER_CONTACTED, TEACHER_ACCEPTED, CLOSED)
+        and add internal admin notes.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  $ref: '#/components/schemas/RequestStatus'
+                admin_notes:
+                  type: string
+      responses:
+        "200":
+          description: Request updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Request'
 
   # ---------------------
   # ANALYTICS

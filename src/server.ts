@@ -9,6 +9,7 @@ import verification from "./middlewares/verificationPage";
 import adminAuthRoutes from "./routes/adminAuth";
 import adminRoutes from "./routes/Admin";
 import adminAnalyticsRoutes from "./routes/AdminAnalytics";
+import requestAnalyticsRoutes from "./routes/RequestAnalytics";
 
 dotenv.config();
 
@@ -35,7 +36,13 @@ app.use("/admin", adminRoutes);
 
 
 //Admin Analytics routes
+app.use("/admin/requests", requestAnalyticsRoutes);
+
+
+
+//Admin Analytics routes
 app.use("/admin/views", adminAnalyticsRoutes);
+
 
 
 
