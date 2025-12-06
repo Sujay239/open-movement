@@ -1,16 +1,27 @@
-import jwt from "jsonwebtoken";
-async function decodeJwt(token :string) {
-  const parts = token.split(".");
-  if (parts.length !== 3) {
-    throw new Error("Invalid JWT format");
-  }
+// decodeToken.ts
+import jwt, { JwtPayload } from "jsonwebtoken";
 
-  // Signature verification would require the secret/public key and a cryptographic library
-  const data = await jwt.decode(token);
-  // For demonstration purposes, only decoding header and payload is shown.
+const JWT_SECRET = process.env.JWT_SECRET || "CHANGE_THIS_SECRET_IN_ENV"; // must be from .env in production
 
-  // console.log(data);
-  return  data;
+export interface AppJwtPayload extends JwtPayload {
+  id: number; // school_id or admin_id
+  role?: string; // optional
+}
+
+async function decodeJwt(token: string): Promise<AppJwtPayload> {
+  return new Promise((resolve, reject) => {
+    if (!token) {
+      return reject(new Error("No token provided"));
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return reject(err); // token expired, invalid signature, etc
+      }
+
+      resolve(decoded as AppJwtPayload);
+    });
+  });
 }
 
 export default decodeJwt;

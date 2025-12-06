@@ -241,7 +241,7 @@ paths:
   # ---------------------
   # REQUESTS (School Portal)
   # ---------------------
-  /portal/teachers/{teacherId}/request:
+  /reuest/teachers/{teacherId}:
     post:
       tags: [Requests]
       security: [{ bearerAuth: [] }]
@@ -271,7 +271,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Request'
 
-  /portal/requests:
+  /requests/teachers:
     get:
       tags: [Requests]
       security: [{ bearerAuth: [] }]
@@ -286,7 +286,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/Request'
 
-  /portal/requests/{id}:
+  /requests/{id}:
     get:
       tags: [Requests]
       security: [{ bearerAuth: [] }]

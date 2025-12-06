@@ -146,29 +146,44 @@ router.get('/me' , authenticateToken , async (req : Request , res : Response) =>
 
 router.post('/use-access-code', authenticateToken, async (req : Request , res : Response) => {
   try{
-    const {code} = req.body;
+    const { code } = req.body;
     const token = req.cookies?.token;
-    const school :any = await decodeJwt(token);
+    const school: any = await decodeJwt(token);
 
     await pool.query("BEGIN");
 
-    const {rows} = await pool.query('select * from access_codes where code = $1' , [code]);
+    const { rows } = await pool.query(
+      "select * from access_codes where code = $1",
+      [code]
+    );
     const accessSchool = rows[0];
 
-    if(accessSchool.status !== 'UNUSED'){
-      return res.status(409).send({error : "Code is already used. please try with different code."});
+    if (accessSchool.status !== "UNUSED") {
+      return res.status(409).send({
+        error: "Code is already used. please try with different code.",
+      });
     }
 
-    if(accessSchool.school_id !== school.id){
-      return res.status(401).send({error : "Please use the coreect code to access"});
+    if (accessSchool.school_id !== school.id) {
+      return res
+        .status(401)
+        .send({ error: "Please use the coreect code to access" });
     }
 
-    await pool.query("update access_codes set first_used_at = NOW(), expires_at =  NOW() + INTERVAL '24 hours', status = 'ACTIVE' where code = $1", [code]);
+    await pool.query(
+      "update access_codes set first_used_at = NOW(), expires_at =  NOW() + INTERVAL '24 hours', status = 'ACTIVE' where code = $1",
+      [code]
+    );
+
+    //Also update the school table to set subscription_started_at and subscription_end_at to time stamp
+    await pool.query(
+      "update schools set subscription_started_at = NOW(), subscription_end_at = NOW() + INTERVAL '24 hours' where id = $1",
+      [school.id]
+    );
+
     await pool.query("COMMIT");
 
-    return res.send({success : "Your Trial preriod started for 24-hours"});
-
-
+    return res.send({ success: "Your Trial preriod started for 24-hours" });
   }catch(err) {
     console.log(err);
     await pool.query("ROLLBACK");

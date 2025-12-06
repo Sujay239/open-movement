@@ -10,6 +10,8 @@ import adminAuthRoutes from "./routes/adminAuth";
 import adminRoutes from "./routes/Admin";
 import adminAnalyticsRoutes from "./routes/AdminAnalytics";
 import requestAnalyticsRoutes from "./routes/RequestAnalytics";
+import teacherPortalRoutes from "./routes/portalTeachers";
+import requestRoutes from "./routes/TeacherRequests";
 
 dotenv.config();
 
@@ -44,7 +46,12 @@ app.use("/admin/requests", requestAnalyticsRoutes);
 app.use("/admin/views", adminAnalyticsRoutes);
 
 
+//Teacher Portal routes
+app.use("/portal/teachers", teacherPortalRoutes);
 
+
+//Teacher Requests routes
+app.use("/requests", requestRoutes);
 
 
 //sending mail to verify email id
@@ -73,16 +80,7 @@ app.get("/verifyemail/:token", async (req: Request, res: Response) => {
   }
 });
 
-app.delete("/delete/:email", async (req: Request, res: Response) => {
-  try {
-    const { email } = req.params;
 
-    await pool.query("delete from schools where email = $1", [email]);
-    res.send("Successfully deleted the school");
-  } catch (err) {
-    res.status(401).send("Error occurred in deleting school data.");
-  }
-});
 
 // Simple test route
 app.get("/", (req: Request, res: Response) => {
@@ -92,3 +90,43 @@ app.get("/", (req: Request, res: Response) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// app.delete("/delete/:email", async (req: Request, res: Response) => {
+//   try {
+//     const { email } = req.params;
+
+//     await pool.query("delete from schools where email = $1", [email]);
+//     res.send("Successfully deleted the school");
+//   } catch (err) {
+//     res.status(401).send("Error occurred in deleting school data.");
+//   }
+// });
