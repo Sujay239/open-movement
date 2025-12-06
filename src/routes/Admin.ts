@@ -461,33 +461,76 @@ router.get('/school/:id' , authenticateToken , async (req : Request , res : Resp
 
 
 // Update subscription status of a school manually by Admin
-router.patch('/school/:id/subscription' , authenticateToken , async (req : Request , res : Response) => {
-  try{
-    const token = req.cookies?.token;
-    const isAdminUser : boolean = await isAdmin(token);
-    if(!isAdminUser) {
-      return res.status(403).send({error : "Access denied. Admins only"});
+router.patch(
+  "/school/:id/subscription",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const token = req.cookies?.token;
+      const isAdminUser: boolean = await isAdmin(token);
+      if (!isAdminUser) {
+        return res.status(403).send({ error: "Access denied. Admins only" });
+      }
+
+      const { id } = req.params;
+
+      // Expect body like:
+      // { "subscription_status": "ACTIVE", "subscription_expires_at": 48 }
+      let { subscription_status, subscription_expires_at } = req.body as {
+        subscription_status: "TRIAL" | "ACTIVE" | "EXPIRED";
+        subscription_expires_at: number | string;
+      };
+
+      // Basic validation
+      if (!subscription_status) {
+        return res
+          .status(400)
+          .send({ error: "subscription_status is required" });
+      }
+
+      if (!["TRIAL", "ACTIVE", "EXPIRED"].includes(subscription_status)) {
+        return res
+          .status(400)
+          .send({ error: "Invalid subscription_status value" });
+      }
+
+      if (!subscription_expires_at) {
+        return res
+          .status(400)
+          .send({ error: "subscription_expires_at (hours) is required" });
+      }
+
+      const hours = Number(subscription_expires_at);
+      if (Number.isNaN(hours) || hours <= 0) {
+        return res.status(400).send({
+          error: "subscription_expires_at must be a positive number of hours",
+        });
+      }
+
+      const updateResult = await pool.query(
+        `
+        UPDATE schools SET
+          subscription_status      = $1,
+          subscription_started_at  = NOW(),
+          subscription_end_at      = NOW() + make_interval(hours => $2::int),
+          updated_at               = NOW()
+        WHERE id = $3
+        RETURNING *;
+      `,
+        [subscription_status, hours, id]
+      );
+
+      if (updateResult.rowCount === 0) {
+        return res.status(404).send({ error: "School not found" });
+      }
+
+      res.json(updateResult.rows[0]);
+    } catch (err) {
+      console.error(err);
+      res.status(500).send({ error: "Internal server error" });
     }
-    const {id} = req.params;
-    const {subscription_status, subscription_expires_at} = req.body;
-    const updateResult = await pool.query(
-      `update schools set
-        subscription_status = $1,
-        subscription_expires_at = $2,
-        updated_at = NOW()
-      where id = $3
-      returning *;`,
-      [subscription_status, subscription_expires_at, id]
-    );
-    if(updateResult.rowCount === 0) {
-      return res.status(404).send({error : "School not found"});
-    }
-    res.json(updateResult.rows[0]);
-  }catch(err) {
-    console.log(err);
-    res.status(500).send({error : "Internal server error"});
   }
-});
+);
 
 
 

@@ -8,11 +8,34 @@ const router = Router();
 
 
 
-// Get all requests
+// Get all requests with teacher and school details
 router.get("/", authenticateToken, async (req: Request, res: Response) => {
   try {
+    const token = req.cookies?.token;
+    if (!token) {
+      return res.status(401).send({ error: "Unauthorized: No token provided" });
+    }
+    const isUserAdmin = await isAdmin(token);
+    if (!isUserAdmin) {
+      return res.status(403).send({ error: "Forbidden: Admins only" });
+    }
+    
     const { rows } = await pool.query(
-      "SELECT * FROM requests ORDER BY requested_at DESC"
+      `SELECT
+        r.id,
+        r.teacher_id,
+        r.school_id,
+        r.status,
+        r.admin_notes,
+        r.school_message,
+        r.requested_at,
+        t.teacher_code,
+        t.full_name as teacher_name,
+        s.name as school_name
+      FROM requests r
+      LEFT JOIN teachers t ON r.teacher_id = t.id
+      LEFT JOIN schools s ON r.school_id = s.id
+      ORDER BY r.requested_at DESC`
     );
     res.json(rows);
   } catch (error) {
@@ -21,9 +44,7 @@ router.get("/", authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
-
-
-// Get request by ID
+// Get request by ID with teacher and school details
 router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -35,11 +56,25 @@ router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
     if (!isUserAdmin) {
       return res.status(403).send({ error: "Forbidden: Admins only" });
     }
-    const { rows } = await pool.query("SELECT * FROM requests WHERE id = $1", [
-      id,
-    ]);
+    const { rows } = await pool.query(
+      `SELECT
+        r.id,
+        r.teacher_id,
+        r.school_id,
+        r.status,
+        r.admin_notes,
+        r.requested_at,
+        t.teacher_code,
+        t.full_name as teacher_name,
+        s.name as school_name
+      FROM requests r
+      LEFT JOIN teachers t ON r.teacher_id = t.id
+      LEFT JOIN schools s ON r.school_id = s.id
+      WHERE r.id = $1`,
+      [id]
+    );
     if (rows.length === 0) {
-      return res.status(404).send({ error: "Request  not found" });
+      return res.status(404).send({ error: "Request not found" });
     }
     res.json(rows[0]);
   } catch (error) {
@@ -47,6 +82,7 @@ router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
     res.status(500).send({ error: "Internal server error" });
   }
 });
+
 
 
 

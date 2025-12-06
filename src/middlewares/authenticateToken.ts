@@ -7,6 +7,11 @@ export function authenticateToken(
   res: Response,
   next: NextFunction
 ) {
+  // Skip auth for Stripe webhook
+  if (req.path.startsWith("/webhook/stripe")) {
+    return next();
+  }
+
   try {
     const token = req.cookies?.token; // read cookie sent from client
 

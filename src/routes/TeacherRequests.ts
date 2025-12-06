@@ -6,7 +6,7 @@ import decodeJwt from "../middlewares/decodeToken";
 const router = Router();
 
 
-router.get('/teachers', authenticateToken, async (req: Request, res: Response) => { 
+router.get('/teachers', authenticateToken, async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
       const data: any = await decodeJwt(token);
@@ -30,7 +30,6 @@ router.get('/teachers', authenticateToken, async (req: Request, res: Response) =
           t.will_move_sem2,
           t.years_experience,
           t.preferred_regions,
-          t.current_school_name,
           t.profile_status,
           r.requested_at,
           r.status,
@@ -69,7 +68,6 @@ router.get('/teachers', authenticateToken, async (req: Request, res: Response) =
           will_move_sem2: r.will_move_sem2,
           years_experience: r.years_experience,
           preferred_regions: r.preferred_regions,
-          current_school_name: r.current_school_name,
           profile_status: r.profile_status
         } : null
       }));
@@ -89,7 +87,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
-      const data: any = await decodeJwt(token); 
+      const data: any = await decodeJwt(token);
       const requestId = req.params.id;
 
       const query = `
@@ -112,7 +110,6 @@ router.get(
         t.will_move_sem2,
         t.years_experience,
         t.preferred_regions,
-        t.current_school_name,
         t.profile_status,
         r.requested_at,
         r.status,
@@ -157,7 +154,6 @@ router.get(
           will_move_sem2: r.will_move_sem2,
           years_experience: r.years_experience,
           preferred_regions: r.preferred_regions,
-          current_school_name: r.current_school_name,
           profile_status: r.profile_status
         } : null
       };
@@ -177,8 +173,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
-      const data: any = await decodeJwt(token); 
-      const teacherId = req.params.teacherId; 
+      const data: any = await decodeJwt(token);
+      const teacherId = req.params.teacherId;
       const { school_message } = req.body;
 
       const query = `

@@ -8,12 +8,7 @@ dotenv.config({
 
 const { Pool } = pkg;
 
-console.log("DB CONFIG:", {
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  database: process.env.DB_NAME,
-});
+
 
 export const pool = new Pool({
   host: process.env.DB_HOST || "localhost",

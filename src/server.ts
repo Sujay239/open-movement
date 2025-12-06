@@ -12,6 +12,8 @@ import adminAnalyticsRoutes from "./routes/AdminAnalytics";
 import requestAnalyticsRoutes from "./routes/RequestAnalytics";
 import teacherPortalRoutes from "./routes/portalTeachers";
 import requestRoutes from "./routes/TeacherRequests";
+import subscriptionMiddleware from "./middlewares/subscriptionMiddleware";
+import  stripeWebhookRouter  from "./routes/stripeWebhook";
 
 dotenv.config();
 
@@ -19,10 +21,17 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middlewares
+// 🔹 1. Stripe webhook FIRST, with raw body and NO auth
+app.post(
+  "/webhook/stripe",
+  express.raw({ type: "application/json" }),
+  stripeWebhookRouter
+);
 app.use(cors());
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(subscriptionMiddleware);
 
 
 //All Routes with their flags

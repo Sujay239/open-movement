@@ -38,7 +38,7 @@ router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/:id/views', authenticateToken, async (req: Request, res: Response) => { 
+router.post('/:id/view', authenticateToken, async (req: Request, res: Response) => {
   try {
     const teacherId = req.params.id;
     const token = req.cookies?.token;

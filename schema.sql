@@ -5,6 +5,11 @@
 -- UUID extension (needed only for access_codes)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+
+-- pg_cron extension (for scheduled tasks)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+
 -- CREATE database if not EXISTS openmovement;
 
 -- =========================================================
@@ -103,6 +108,18 @@ CREATE TABLE IF NOT EXISTS schools (
 CREATE INDEX IF NOT EXISTS idx_schools_subscription_status
     ON schools (subscription_status);
 
+SELECT cron.schedule(
+    'update-subscription-status',
+    '0 * * * *',  -- every hour; use '0 0 * * *' for once per day
+$$
+    UPDATE schools
+    SET subscription_status = 'EXPIRED'
+    WHERE subscription_end_at < NOW()
+      AND subscription_status != 'EXPIRED';
+$$
+);
+
+
 -- =========================================================
 -- TABLE: teachers
 -- =========================================================
@@ -178,7 +195,7 @@ CREATE TABLE archived_teachers (
 
     preferred_regions       TEXT,
 
-    -- category             TEXT, -- Uncomment if you enabled this in the main table
+    -- category             TEXT,
 
     profile_status          TEXT,
     is_visible_in_school_portal BOOLEAN,
@@ -262,5 +279,6 @@ CREATE TABLE IF NOT EXISTS admins (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 
 CREATE INDEX IF NOT EXISTS idx_admins_email ON admins(email);
