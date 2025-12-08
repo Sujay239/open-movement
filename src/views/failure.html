@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Failed</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --error: #ef4444;
+            /* Red */
+            --error-glow: rgba(239, 68, 68, 0.5);
+            --bg-dark: #0f172a;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: var(--bg-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Ambient Background Blobs (Red tinted) */
+        .ambient-light {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--error) 0%, transparent 70%);
+            opacity: 0.15;
+            border-radius: 50%;
+            top: -150px;
+            left: -100px;
+            animation: float 8s ease-in-out infinite alternate;
+        }
+
+        .ambient-light:nth-child(2) {
+            top: auto;
+            bottom: -150px;
+            left: auto;
+            right: -100px;
+            opacity: 0.1;
+            animation-delay: -4s;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(30px, 30px) scale(1.1);
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            -webkit-backdrop-filter: blur(24px);
+            backdrop-filter: blur(24px);
+            border: 1px solid var(--card-border);
+            padding: 3rem 2.5rem;
+            border-radius: 24px;
+            text-align: center;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px) scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Icon Container */
+        .icon-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            box-shadow: 0 0 20px var(--error-glow);
+        }
+
+        /* Animated Cross SVG */
+        .cross-svg {
+            width: 40px;
+            height: 40px;
+            stroke: var(--error);
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+            animation: drawCross 0.6s ease-out forwards 0.3s;
+        }
+
+        @keyframes drawCross {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0 0 10px;
+            color: #fff;
+        }
+
+        .message {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.6);
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        /* Button Style */
+        .btn {
+            display: inline-block;
+            background: var(--error);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.5);
+            background: #dc2626;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="ambient-light"></div>
+    <div class="ambient-light"></div>
+
+    <div class="card">
+        <div class="icon-circle">
+            <svg class="cross-svg" viewBox="0 0 52 52">
+                <path d="M16 16 L36 36" />
+                <path d="M36 16 L16 36" />
+            </svg>
+        </div>
+
+        <h1>Payment Failed</h1>
+        <p class="message">
+            We couldn't process your payment. This might be due to insufficient funds or a bank decline.
+        </p>
+
+        <a href="/checkout" class="btn">Try Again</a>
+    </div>
+
+</body>
+
+</html>
