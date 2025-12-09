@@ -277,16 +277,6 @@
             const sessionId = params.get("session_id");
             const container = document.getElementById("content");
 
-            // --- SIMULATION FOR DEMO PURPOSE (Remove this block in production) ---
-            // This allows you to see the success state without a real backend
-            /*
-            setTimeout(() => {
-                showSuccess();
-            }, 3000);
-            return; 
-            */
-            // -------------------------------------------------------------------
-
             if (!sessionId) {
                 showError("Session ID Missing", "We couldn't find your transaction session.");
                 return;
@@ -323,8 +313,6 @@
                 <p class="message">Thank you for your purchase.<br>Redirecting you to the dashboard...</p>
             `;
             spawnConfetti();
-
-            // Optional: Redirect logic
             // setTimeout(() => window.location.href = "/dashboard", 3000);
         }
 

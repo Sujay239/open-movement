@@ -5,8 +5,10 @@ import { authenticateToken } from "../middlewares/authenticateToken";
 import decodeJwt from "../middlewares/decodeToken";
 const router = Router();
 
-
-router.get('/teachers', authenticateToken, async (req: Request, res: Response) => {
+router.get(
+  "/teachers",
+  authenticateToken,
+  async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
       const data: any = await decodeJwt(token);
@@ -47,50 +49,50 @@ router.get('/teachers', authenticateToken, async (req: Request, res: Response) =
         id: r.id,
         teacher_id: r.teacher_id,
         teacher_code: r.teacher_code,
-        requested_at: r.requested_at ? new Date(r.requested_at).toLocaleString() : null,
+        requested_at: r.requested_at
+          ? new Date(r.requested_at).toLocaleString()
+          : null,
         status: r.status,
         school_message: r.school_message,
         admin_notes: r.admin_notes,
-        // expose full teacher details only when admin has set status to TEACHER_ACCEPTED
-        teacher: r.status === 'TEACHER_ACCEPTED' ? {
-          full_name: r.full_name,
-          email: r.email,
-          phone: r.phone,
-          cv_link: r.cv_link,
-          current_job_title: r.current_job_title,
-          subjects: r.subjects,
-          highest_qualification: r.highest_qualification,
-          current_country: r.current_country,
-          current_region: r.current_region,
-          visa_status: r.visa_status,
-          notice_period: r.notice_period,
-          will_move_sem1: r.will_move_sem1,
-          will_move_sem2: r.will_move_sem2,
-          years_experience: r.years_experience,
-          preferred_regions: r.preferred_regions,
-          profile_status: r.profile_status
-        } : null
+        teacher:
+          r.status === "TEACHER_ACCEPTED"
+            ? {
+                full_name: r.full_name,
+                email: r.email,
+                phone: r.phone,
+                cv_link: r.cv_link,
+                current_job_title: r.current_job_title,
+                subjects: r.subjects,
+                highest_qualification: r.highest_qualification,
+                current_country: r.current_country,
+                current_region: r.current_region,
+                visa_status: r.visa_status,
+                notice_period: r.notice_period,
+                will_move_sem1: r.will_move_sem1,
+                will_move_sem2: r.will_move_sem2,
+                years_experience: r.years_experience,
+                preferred_regions: r.preferred_regions,
+                profile_status: r.profile_status,
+              }
+            : null,
       }));
 
       return res.send(formatted);
-  } catch (error) {
+    } catch (error) {
       console.error("Error fetching teacher requests:", error);
       res.status(500).send({ error: "Internal server error" });
     }
+  }
+);
 
-});
+router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.token;
+    const data: any = await decodeJwt(token);
+    const requestId = req.params.id;
 
-
-router.get(
-  "/:id",
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const token = req.cookies?.token;
-      const data: any = await decodeJwt(token);
-      const requestId = req.params.id;
-
-      const query = `
+    const query = `
       SELECT
         r.id,
         r.teacher_id,
@@ -121,51 +123,54 @@ router.get(
       LIMIT 1;
     `;
 
-      const { rows } = await pool.query(query, [requestId, data.id]);
+    const { rows } = await pool.query(query, [requestId, data.id]);
 
-      if (rows.length === 0) {
-        return res
-          .status(404)
-          .json({ message: "Request not found or not authorized" });
-      }
-
-      const r = rows[0];
-      const response = {
-        id: r.id,
-        teacher_id: r.teacher_id,
-        teacher_code: r.teacher_code,
-        requested_at: r.requested_at ? new Date(r.requested_at).toLocaleString() : null,
-        status: r.status,
-        school_message: r.school_message,
-        admin_notes: r.admin_notes,
-        teacher: r.status === 'TEACHER_ACCEPTED' ? {
-          full_name: r.full_name,
-          email: r.email,
-          phone: r.phone,
-          cv_link: r.cv_link,
-          current_job_title: r.current_job_title,
-          subjects: r.subjects,
-          highest_qualification: r.highest_qualification,
-          current_country: r.current_country,
-          current_region: r.current_region,
-          visa_status: r.visa_status,
-          notice_period: r.notice_period,
-          will_move_sem1: r.will_move_sem1,
-          will_move_sem2: r.will_move_sem2,
-          years_experience: r.years_experience,
-          preferred_regions: r.preferred_regions,
-          profile_status: r.profile_status
-        } : null
-      };
-
-      return res.status(200).json(response);
-    } catch (error) {
-      console.error("Error fetching request by id:", error);
-      return res.status(500).json({ error: "Internal server error" });
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Request not found or not authorized" });
     }
-  }
-);
 
+    const r = rows[0];
+    const response = {
+      id: r.id,
+      teacher_id: r.teacher_id,
+      teacher_code: r.teacher_code,
+      requested_at: r.requested_at
+        ? new Date(r.requested_at).toLocaleString()
+        : null,
+      status: r.status,
+      school_message: r.school_message,
+      admin_notes: r.admin_notes,
+      teacher:
+        r.status === "TEACHER_ACCEPTED"
+          ? {
+              full_name: r.full_name,
+              email: r.email,
+              phone: r.phone,
+              cv_link: r.cv_link,
+              current_job_title: r.current_job_title,
+              subjects: r.subjects,
+              highest_qualification: r.highest_qualification,
+              current_country: r.current_country,
+              current_region: r.current_region,
+              visa_status: r.visa_status,
+              notice_period: r.notice_period,
+              will_move_sem1: r.will_move_sem1,
+              will_move_sem2: r.will_move_sem2,
+              years_experience: r.years_experience,
+              preferred_regions: r.preferred_regions,
+              profile_status: r.profile_status,
+            }
+          : null,
+    };
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("Error fetching request by id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.post(
   "/teachers/:teacherId",
@@ -186,7 +191,8 @@ router.post(
       const { rows } = await pool.query(query, [
         teacherId,
         data.id,
-        school_message || "Interested in this teacher and would like to connect.",
+        school_message ||
+          "Interested in this teacher and would like to connect.",
       ]);
 
       return res.status(201).json({
@@ -199,8 +205,5 @@ router.post(
     }
   }
 );
-
-
-
 
 export default router;

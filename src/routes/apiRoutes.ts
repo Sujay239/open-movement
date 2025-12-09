@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { sendMail } from "../utils/mailsender";
 import { pool } from "../db";
 import { Stripe } from "stripe";
+import { authenticateToken } from "../middlewares/authenticateToken";
 
 const router = Router();
 
@@ -46,7 +47,11 @@ http://loclahost:5173 </p>` // or build nicer HTML
 });
 
 
+
+// Confirming for successful checkout & update the subscription of scholl in data base
 router.post("/confirm-checkout", async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const { sessionId } = req.body;
 
@@ -54,15 +59,12 @@ router.post("/confirm-checkout", async (req, res) => {
       return res.status(400).json({ error: "Missing sessionId" });
     }
 
-    // 1. Get session from Stripe
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    // 2. Check if payment is successful
     if (session.payment_status !== "paid") {
       return res.status(400).json({ error: "Payment not completed yet" });
     }
 
-    // 3. Get userId that you set in metadata when creating the session
     const userId = session.metadata?.userId;
     const plan = session.metadata?.planId;
 
@@ -70,24 +72,39 @@ router.post("/confirm-checkout", async (req, res) => {
       return res.status(400).json({ error: "No userId in session metadata" });
     }
 
-    // 4. (OPTIONAL BUT IMPORTANT) Update your database here
-    // You can store things like:
-    // - stripeCustomerId: session.customer
-    // - stripeSubscriptionId: session.subscription
-    // - subscriptionActive: true
-    //
-    // Example pseudo-code (replace with your real DB logic):
-    //
-    // await db.user.update({
-    //   where: { id: userId },
-    //   data: {
-    //     subscriptionActive: true,
-    //     stripeCustomerId: session.customer?.toString(),
-    //     stripeSubscriptionId: session.subscription?.toString(),
-    //   },
-    // });
+    let endDate = new Date();
+    if (plan === "BASIC") endDate.setMonth(endDate.getMonth() + 1);
+    else if (plan === "PRO") endDate.setMonth(endDate.getMonth() + 6);
+    else if (plan === "ULTIMATE") endDate.setMonth(endDate.getMonth() + 12);
+    else return res.status(400).json({ error: "Invalid plan" });
 
-    console.log("✅ Payment confirmed for user:", userId);
+    const query = `
+      UPDATE SCHOOLS
+      SET subscription_status = 'ACTIVE',
+          subscription_plan = $4,
+          subscription_started_at = NOW(),
+          subscription_end_at = $1
+      WHERE id = $2 AND email = $3
+      RETURNING *
+    `;
+
+    await client.query("BEGIN");
+
+    const { rows } = await client.query(query, [
+      endDate,
+      userId,
+      session.customer_email,
+      plan,
+    ]);
+
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res
+        .status(400)
+        .json({ error: "School not found or update failed" });
+    }
+
+    await client.query("COMMIT");
 
     return res.json({
       success: true,
@@ -98,6 +115,9 @@ router.post("/confirm-checkout", async (req, res) => {
     });
   } catch (err: any) {
     console.error("Confirm checkout error:", err.message);
+    try {
+      await pool.query("ROLLBACK");
+    } catch {}
     return res
       .status(500)
       .json({ error: "Internal error", details: err.message });

@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { z } from "zod";
 import { Router } from "express";
 import { pool } from "../db";
 import { encodePass } from "../middlewares/passwordEconder";
@@ -7,43 +8,65 @@ import passwordMatcher from "../middlewares/passwordMatch";
 import { generateToken } from "../middlewares/generateToken";
 import decodeJwt from "../middlewares/decodeToken";
 import { JwtPayload, TokenExpiredError } from "jsonwebtoken";
-import { error } from "console";
 import { sendMail } from "../utils/mailsender";
 
 const router = Router();
 
+const registerSchema = z.object({
+  name: z.string().min(1).max(200),
+  contact_name: z.string().optional().nullable(),
+  email: z.string().email(),
+  password: z.string().min(6).max(128),
+  country: z.string().optional().nullable(),
+  region: z.string().optional().nullable(),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+
+
 //Register Users or schools
 router.post("/register", async (req: Request, res: Response) => {
-  const { name, contact_name, email, password, country, region } = req.body;
+  const parse = registerSchema.safeParse(req.body);
+  if (!parse.success) {
+    return res
+      .status(400)
+      .json({ error: "Invalid input", details: parse.error.issues });
+  }
+  const { name, contact_name, email, password, country, region } = parse.data;
   try {
     const hash = await encodePass(password);
     if (!hash) {
       return res.status(403).send({ error: "password not hashed" });
     }
+    const normalEmail = email.trim().toLowerCase();
+    await pool.query("BEGIN");
     await pool.query(
       `INSERT INTO schools (name ,contact_name, email , password_hash,country,region) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [name, contact_name, email, hash, country, region]
+      [name, contact_name, normalEmail, hash, country, region]
     );
-
 
 
     const { rows } = await pool.query(
       "SELECT * FROM schools WHERE email = $1 LIMIT 1",
-      [email]
+      [normalEmail]
     );
 
     if (!rows || rows.length === 0) {
       return res
         .status(401)
         .send({
-          error: `School not found associated with email: ${email} \n Please Register yourself first.`,
+          error: `School not found associated with email: ${normalEmail} \n Please Register yourself first.`,
         });
     }
 
     const school = rows[0];
 
      await sendMail(
-          email,
+          normalEmail,
           "Verify your email address",
           `<p>Hi ${school.name},
     Welcome to Open Movement! Please verify your email address to complete your registration.
@@ -58,9 +81,10 @@ router.post("/register", async (req: Request, res: Response) => {
     res.send({
       sucessMsg: "Registration sucessful. Email verification mail sent",
       name,
-      email,
+      email: normalEmail,
       hash,
     });
+    await pool.query("COMMIT");
   } catch (err) {
     console.log(err);
     res
@@ -71,19 +95,26 @@ router.post("/register", async (req: Request, res: Response) => {
 
 //Login users or schools
 router.post("/login", async (req: Request, res: Response) => {
+  const parse = loginSchema.safeParse(req.body);
+  if (!parse.success) {
+    return res
+      .status(400)
+      .json({ error: "Invalid input", details: parse.error.issues });
+  }
+  const { email, password } = parse.data;
   try {
-    const { email, password } = req.body;
 
     // 1. Find user by email
+    const normalEmail = email.trim().toLowerCase();
     const { rows } = await pool.query(
       "SELECT * FROM schools WHERE email = $1 LIMIT 1",
-      [email]
+      [normalEmail]
     );
 
     if (!rows || rows.length === 0) {
       return res
         .status(401)
-        .send({ error: `School not found associated with email: ${email} \n Please Register yourself first.` });
+        .send({ error: `School not found associated with email: ${normalEmail} \n Please Register yourself first.` });
     }
 
     const school = rows[0];

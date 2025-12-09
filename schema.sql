@@ -31,6 +31,13 @@ BEGIN
         CREATE TYPE subscription_status AS ENUM ('TRIAL', 'ACTIVE', 'EXPIRED');
     END IF;
 END$$;
+-- school subscription plan
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'subscription_plan') THEN
+        CREATE TYPE subscription_plan AS ENUM ('BASIC', 'PRO', 'ULTIMATE');
+    END IF;
+END$$;
 
 -- trial access code status
 DO $$
@@ -97,12 +104,15 @@ CREATE TABLE IF NOT EXISTS schools (
     region                  TEXT,
 
     subscription_status     subscription_status NOT NULL DEFAULT 'TRIAL',
+    subscription_plan       subscription_plan DEFAULT NULL,
     subscription_started_at TIMESTAMPTZ,
     subscription_end_at     TIMESTAMPTZ,
     verify_token            TEXT DEFAULT uuid_generate_v4(),
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    verified                BOOLEAN DEFAULT FALSE
+    verified                BOOLEAN DEFAULT FALSE,
+    forgot_password_token    TEXT DEFAULT NULL,
+    forgot_password_expires_at TIMESTAMPTZ DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_schools_subscription_status

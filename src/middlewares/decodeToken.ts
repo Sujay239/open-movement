@@ -1,14 +1,17 @@
-// decodeToken.ts
 import jwt, { JwtPayload } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "CHANGE_THIS_SECRET_IN_ENV"; // must be from .env in production
-
 export interface AppJwtPayload extends JwtPayload {
-  id: number; // school_id or admin_id
-  role?: string; // optional
+  id: number;
+  role?: string;
 }
 
 async function decodeJwt(token: string): Promise<AppJwtPayload> {
+  const JWT_SECRET = process.env.JWT_SECRET;
+
+  if (!JWT_SECRET) {
+    throw new Error("JWT_SECRET not configured");
+  }
+
   return new Promise((resolve, reject) => {
     if (!token) {
       return reject(new Error("No token provided"));
@@ -16,9 +19,8 @@ async function decodeJwt(token: string): Promise<AppJwtPayload> {
 
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
       if (err) {
-        return reject(err); // token expired, invalid signature, etc
+        return reject(err);
       }
-
       resolve(decoded as AppJwtPayload);
     });
   });

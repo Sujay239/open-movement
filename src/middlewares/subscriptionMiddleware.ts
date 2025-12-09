@@ -1,11 +1,9 @@
-// subscriptionMiddleware.ts
 import { NextFunction, Request, Response } from "express";
-import decodeJwt from "./decodeToken";
+import decodeJwt, { AppJwtPayload } from "./decodeToken";
 import { pool } from "../db";
 
-const ALLOWED_STATUSES = ["TRIAL", "ACTIVE"];
+const ALLOWED_STATUSES = ["TRIAL", "ACTIVE"] as const;
 
-// Add any routes you want to bypass subscription checking
 const EXCLUDED_PATHS = [
   "/auth",
   "/admin",
@@ -13,10 +11,14 @@ const EXCLUDED_PATHS = [
   "/api",
   "/verifyemail",
   "/forgot-password",
-  "/webhook/stripe",
-];
+  "/reset-password",
+  "/stripe",
+  "/success",
+  "/cancel",
+  "/payment-failed",
+] as const;
 
-function shouldSkip(path: string) {
+function shouldSkip(path: string): boolean {
   return EXCLUDED_PATHS.some((route) => path.startsWith(route));
 }
 
@@ -24,7 +26,7 @@ async function requireSubscription(
   req: Request,
   res: Response,
   next: NextFunction
-) {
+): Promise<void> {
   try {
     // Skip exempt routes
     if (shouldSkip(req.path)) {
@@ -33,10 +35,17 @@ async function requireSubscription(
 
     const token = req.cookies?.token;
     if (!token) {
-      return res.status(401).json({ message: "Not authenticated" });
+      res.status(401).json({ message: "Not authenticated" });
+      return;
     }
 
-    const data: any = await decodeJwt(token);
+    let data: AppJwtPayload;
+    try {
+      data = await decodeJwt(token);
+    } catch (err) {
+      res.status(403).json({ message: "Invalid token" });
+      return;
+    }
 
     // bypass for admins
     if (data.role === "ADMIN") {
@@ -45,18 +54,19 @@ async function requireSubscription(
 
     const schoolId = data.id;
     if (!schoolId) {
-      return res.status(401).json({ message: "Not authenticated" });
+      res.status(401).json({ message: "Invalid token structure" });
+      return;
     }
 
     const { rows } = await pool.query(
       `SELECT subscription_status, subscription_started_at, subscription_end_at
-       FROM schools
-       WHERE id = $1`,
+       FROM schools WHERE id = $1`,
       [schoolId]
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: "School not found" });
+      res.status(404).json({ message: "School not found" });
+      return;
     }
 
     const {
@@ -65,31 +75,36 @@ async function requireSubscription(
       subscription_end_at,
     } = rows[0];
 
+    // Check if dates exist
     if (!subscription_started_at || !subscription_end_at) {
-      return res.status(402).json({
+      res.status(402).json({
         message: "Subscription not configured. Please purchase a subscription.",
         code: "SUBSCRIPTION_REQUIRED",
       });
+      return;
     }
 
+    // Check expiration
     if (new Date(subscription_end_at) < new Date()) {
-      return res.status(402).json({
+      res.status(402).json({
         message: "Your subscription has expired. Please renew.",
         code: "SUBSCRIPTION_EXPIRED",
       });
+      return;
     }
 
     if (!ALLOWED_STATUSES.includes(subscription_status)) {
-      return res.status(402).json({
+      res.status(402).json({
         message: "You must purchase a subscription to access this resource.",
         code: "SUBSCRIPTION_REQUIRED",
       });
+      return;
     }
 
     next();
   } catch (err) {
     console.error("Subscription check error:", err);
-    return res.status(500).json({
+    res.status(500).json({
       message: "Server error during subscription check",
     });
   }
