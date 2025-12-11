@@ -9,6 +9,7 @@ import { generateToken } from "../middlewares/generateToken";
 import decodeJwt from "../middlewares/decodeToken";
 import { JwtPayload, TokenExpiredError } from "jsonwebtoken";
 import { sendMail } from "../utils/mailsender";
+const cookies = require("cookie-parser");
 
 const router = Router();
 
@@ -26,7 +27,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-
+router.use(cookies());
 
 //Register Users or schools
 router.post("/register", async (req: Request, res: Response) => {
@@ -39,6 +40,15 @@ router.post("/register", async (req: Request, res: Response) => {
   const { name, contact_name, email, password, country, region } = parse.data;
   try {
     const hash = await encodePass(password);
+    const sch = await pool.query(
+      "SELECT * FROM schools WHERE email = $1 LIMIT 1",
+      [email.trim().toLowerCase()]
+    );
+    if (sch.rows.length > 0) {
+      return res
+        .status(409)
+        .send({ error: "School with this email already exists. Try with different email address." });
+    }
     if (!hash) {
       return res.status(403).send({ error: "password not hashed" });
     }
@@ -70,7 +80,7 @@ router.post("/register", async (req: Request, res: Response) => {
           "Verify your email address",
           `<p>Hi ${school.name},
     Welcome to Open Movement! Please verify your email address to complete your registration.
-    Click the link below to confirm your email: http://localhost:5000/verifyemail/${school.verify_token}
+    Click the link below to confirm your email: ${process.env.CLIENT_URL}/verifyemail/${school.verify_token}
     If you have any trouble with the link, please copy and paste it into your web browser's address bar.
     Thanks,
     The Open movement Team
@@ -79,10 +89,7 @@ router.post("/register", async (req: Request, res: Response) => {
 
 
     res.send({
-      sucessMsg: "Registration sucessful. Email verification mail sent",
-      name,
-      email: normalEmail,
-      hash,
+      successMsg: "Registration successful. Email for verification sent successfully.",
     });
     await pool.query("COMMIT");
   } catch (err) {
@@ -136,10 +143,7 @@ router.post("/login", async (req: Request, res: Response) => {
     // console.log(data);
 
       res.cookie("token", token, {
-        maxAge: 86400000, // 1 hour
-        httpOnly: true, // cannot be accessed by JavaScript (more secure)
-        secure: true, // only sent over HTTPS
-        sameSite: "strict", // restricts cross-site usage
+        maxAge: 86400000,
       });
 
     return res.send({ success: "Login successful", accessToken: token });
