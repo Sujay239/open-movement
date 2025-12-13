@@ -125,4 +125,18 @@ router.post("/confirm-checkout", async (req, res) => {
 });
 
 
+router.post("/support/send-email", async (req : Request, res:Response) => {
+  const { issueType, message } = req.body;
+
+  await sendMail(
+    "kotalsujay89@gmail.com",
+    `Support Request: ${issueType}`,
+    message,
+  );
+
+  res.json({ success: true });
+});
+
+
+
 export default router;

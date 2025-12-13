@@ -18,13 +18,15 @@ import fs from "fs";
 import path from "path";
 import { sendMail } from "./utils/mailsender";
 import { encodePass } from "./middlewares/passwordEconder";
+import schoolRoutes from "./routes/schoolRoutes";
+import decodeJwt from "./middlewares/decodeToken";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.use(cors(
-  { origin:"http://localhost:5173",
+  { origin:"http://localhost:5174",
     credentials: true,
   }
 ));
@@ -63,6 +65,55 @@ app.use("/requests", requestRoutes);
 
 //sending mail to verify email id
 app.use("/api", mail);
+
+app.use('/school' , schoolRoutes);
+
+// If using app directly:
+app.get(
+  "/subscription/status",
+  async (req: Request, res: Response) => {
+    try {
+      const token = req.cookies?.token;
+      if (!token) {
+        return res.status(401).json({ error: "Unauthorized (no token)" });
+      }
+
+      // decodeJwt may throw if token invalid — we let catch handle it
+      const data: any = await decodeJwt(token);
+
+      if (!data?.id || !data?.email) {
+        return res.status(401).json({ error: "Invalid token payload" });
+      }
+
+      const query =
+        "SELECT subscription_status, subscription_end_at FROM schools WHERE id = $1 AND email = $2 LIMIT 1";
+      const { rows } = await pool.query(query, [data.id, data.email]);
+
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "School not found" });
+      }
+
+      const row = rows[0];
+
+      // Return end date in ISO format (null if none)
+      return res.status(200).json({
+        subscription_status: row.subscription_status ?? null,
+        subscription_end_at:
+          row.subscription_end_at != null
+            ? new Date(row.subscription_end_at).toISOString()
+            : null,
+      });
+    } catch (err: any) {
+      console.error("Error fetching subscription status:", err);
+      // If decodeJwt threw because token invalid, return 401 for clarity
+      if (err?.message?.toLowerCase()?.includes("token") || err?.name === "JsonWebTokenError") {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 
 app.get("/verifyemail/:token", async (req: Request, res: Response) => {
   const { token } = req.params;

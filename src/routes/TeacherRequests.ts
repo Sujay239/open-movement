@@ -22,7 +22,7 @@ router.get(
           t.phone,
           t.cv_link,
           t.current_job_title,
-          t.subjects,
+          array_to_json(t.subjects::text[]) AS subjects,
           t.highest_qualification,
           t.current_country,
           t.current_region,
@@ -36,6 +36,7 @@ router.get(
           r.requested_at,
           r.status,
           r.school_message,
+          r.school_id,
           COALESCE(r.admin_notes, 'No response by admin still now') AS admin_notes
         FROM requests r
         JOIN teachers t ON t.id = r.teacher_id
@@ -48,6 +49,7 @@ router.get(
       const formatted = rows.map((r: any) => ({
         id: r.id,
         teacher_id: r.teacher_id,
+        school_id : r.school_id,
         teacher_code: r.teacher_code,
         requested_at: r.requested_at
           ? new Date(r.requested_at).toLocaleString()
@@ -55,6 +57,7 @@ router.get(
         status: r.status,
         school_message: r.school_message,
         admin_notes: r.admin_notes,
+        subjects: r.subjects,
         teacher:
           r.status === "TEACHER_ACCEPTED"
             ? {
@@ -63,7 +66,6 @@ router.get(
                 phone: r.phone,
                 cv_link: r.cv_link,
                 current_job_title: r.current_job_title,
-                subjects: r.subjects,
                 highest_qualification: r.highest_qualification,
                 current_country: r.current_country,
                 current_region: r.current_region,
@@ -180,7 +182,7 @@ router.post(
       const token = req.cookies?.token;
       const data: any = await decodeJwt(token);
       const teacherId = req.params.teacherId;
-      const { school_message } = req.body;
+      const { message } = req.body;
 
       const query = `
       INSERT INTO requests (teacher_id, school_id, school_message)
@@ -191,7 +193,7 @@ router.post(
       const { rows } = await pool.query(query, [
         teacherId,
         data.id,
-        school_message ||
+        message ||
           "Interested in this teacher and would like to connect.",
       ]);
 
@@ -201,6 +203,46 @@ router.post(
       });
     } catch (error) {
       console.error("Error inserting request:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+
+router.delete(
+  "/teachers/:id/:teacherId/:schoolId",
+  async (req: Request, res: Response) => {
+    try {
+      const { id,  teacherId,schoolId } = req.params;
+
+      // Validate required params
+      if (!id || !schoolId) {
+        return res
+          .status(400)
+          .json({ error: "Missing id or schoolId parameter" });
+      }
+
+      const query = `
+      UPDATE requests
+      SET status = $1
+      WHERE id = $2 AND school_id = $4 AND teacher_id = $3
+      RETURNING *;
+    `;
+
+      const values = ["CLOSED", id,teacherId, schoolId];
+
+      const result = await pool.query(query, values);
+      if (result.rowCount === 0) {
+        return res.status(404).json({
+          error: "Request not found or does not belong to this school",
+        });
+      }
+
+      return res.status(200).json({
+        message: "Request closed successfully"
+      });
+    } catch (err) {
+      console.error("Error closing request:", err);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

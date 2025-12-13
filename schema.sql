@@ -28,7 +28,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'subscription_status') THEN
-        CREATE TYPE subscription_status AS ENUM ('TRIAL', 'ACTIVE', 'EXPIRED');
+        CREATE TYPE subscription_status AS ENUM ('NO_SUBSCRIPTION','TRIAL', 'ACTIVE', 'EXPIRED');
     END IF;
 END$$;
 -- school subscription plan
@@ -99,11 +99,13 @@ CREATE TABLE IF NOT EXISTS schools (
     contact_name            TEXT NOT NULL,
     email                   TEXT NOT NULL UNIQUE,
     password_hash           TEXT NOT NULL,
-
+    website                 TEXT DEFAULT NULL,
     country                 TEXT,
     region                  TEXT,
-
-    subscription_status     subscription_status NOT NULL DEFAULT 'TRIAL',
+    about                    TEXT DEFAULT NULL,
+    phone                    TEXT DEFAULT NULL,
+    address                   TEXT DEFAULT NULL,
+    subscription_status     subscription_status NOT NULL DEFAULT 'NO_SUBSCRIPTION',
     subscription_plan       subscription_plan DEFAULT NULL,
     subscription_started_at TIMESTAMPTZ,
     subscription_end_at     TIMESTAMPTZ,

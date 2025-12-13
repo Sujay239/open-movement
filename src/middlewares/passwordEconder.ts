@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 
-export const encodePass = async (rawPass: string) => {
+export  const encodePass = async (rawPass: string) => {
   try {
     const salt = await bcrypt.genSalt(12);
     const hashPass = await bcrypt.hash(rawPass, salt);

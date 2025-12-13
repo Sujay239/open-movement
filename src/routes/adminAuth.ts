@@ -18,7 +18,7 @@ router.post("/login", async (req: Request, res: Response) => {
     if (!rows || rows.length === 0) {
       return res
         .status(401)
-        .send({ error: `Admin not found associated with email: ${email} \n Please Register yourself first.` });
+        .send({ error: `Admin not found associated with email: ${email}` });
     }
     const admin = rows[0];
 
