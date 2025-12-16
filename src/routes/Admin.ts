@@ -95,32 +95,147 @@ router.post(
   }
 );
 
-// Get a specific teacher by ID
-router.get(
-  "/teachers/:id",
+
+router.post(
+  "/teachers/bulk",
   authenticateToken,
   async (req: Request, res: Response) => {
+    const client = await pool.connect();
+
     try {
       const token = req.cookies?.token;
       const isAdminUser: boolean = await isAdmin(token);
+
       if (!isAdminUser) {
-        return res.status(403).send({ error: "Access denied. Admins only" });
+        return res.status(403).json({
+          error: "Access denied. Admins only",
+        });
       }
-      const { id } = req.params;
-      const { rows } = await pool.query(
-        "SELECT * FROM teachers WHERE id = $1",
-        [id]
-      );
-      if (rows.length === 0) {
-        return res.status(404).send({ error: "Teacher not found" });
+
+      const { teachers } = req.body;
+
+      if (!Array.isArray(teachers) || teachers.length === 0) {
+        return res.status(400).json({
+          error: "Teachers array is required",
+        });
       }
-      res.json(rows[0]);
+
+      await client.query("BEGIN");
+
+      const query = `
+        INSERT INTO teachers
+        (
+          teacher_code,
+          full_name,
+          email,
+          phone,
+          cv_link,
+          current_job_title,
+          subjects,
+          highest_qualification,
+          current_country,
+          current_region,
+          visa_status,
+          notice_period,
+          will_move_sem1,
+          will_move_sem2,
+          years_experience,
+          preferred_regions,
+          is_visible_in_school_portal
+        )
+        VALUES
+        (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9,
+          $10, $11, $12, $13, $14, $15, $16, $17
+        )
+      `;
+
+      for (const teacher of teachers) {
+        const {
+          teacher_code,
+          full_name,
+          email,
+          phone,
+          cv_link,
+          current_job_title,
+          subjects,
+          highest_qualification,
+          current_country,
+          current_region,
+          visa_status,
+          notice_period,
+          will_move_sem1 = false,
+          will_move_sem2 = false,
+          years_experience,
+          preferred_regions,
+          is_visible_in_school_portal = true,
+        } = teacher;
+
+        await client.query(query, [
+          teacher_code,
+          full_name,
+          email,
+          phone,
+          cv_link,
+          current_job_title,
+          subjects,
+          highest_qualification,
+          current_country,
+          current_region,
+          visa_status,
+          notice_period,
+          will_move_sem1,
+          will_move_sem2,
+          years_experience,
+          preferred_regions,
+          is_visible_in_school_portal,
+        ]);
+      }
+
+      await client.query("COMMIT");
+
+      return res.status(201).json({
+        success: `${teachers.length} teachers added successfully`,
+      });
     } catch (err) {
-      console.log(err);
-      res.status(500).send({ error: "Internal server error" });
+      await client.query("ROLLBACK");
+      console.error("Bulk teacher insert error:", err);
+      return res.status(500).json({
+        error: "Internal server error",
+      });
+    } finally {
+      client.release();
     }
   }
 );
+
+
+// // Get a specific teacher by ID
+// router.get(
+//   "/teachers/:id",
+//   authenticateToken,
+//   async (req: Request, res: Response) => {
+//     try {
+//       const token = req.cookies?.token;
+//       const isAdminUser: boolean = await isAdmin(token);
+//       if (!isAdminUser) {
+//         return res.status(403).send({ error: "Access denied. Admins only" });
+//       }
+//       const { id } = req.params;
+//       const { rows } = await pool.query(
+//         "SELECT * FROM teachers WHERE id = $1",
+//         [id]
+//       );
+//       if (rows.length === 0) {
+//         return res.status(404).send({ error: "Teacher not found" });
+//       }
+//       res.json(rows[0]);
+//     } catch (err) {
+//       console.log(err);
+//       res.status(500).send({ error: "Internal server error" });
+//     }
+//   }
+// );
 
 //Update a specific teacher by ID
 router.patch(
@@ -286,17 +401,34 @@ router.get(
     try {
       const token = req.cookies?.token;
       const isAdminUser: boolean = await isAdmin(token);
+
       if (!isAdminUser) {
-        return res.status(403).send({ error: "Access denied. Admins only" });
+        return res.status(403).json({ error: "Access denied. Admins only" });
       }
-      const { rows } = await pool.query("select * from access_codes");
+
+      const { rows } = await pool.query(`
+        SELECT
+          ac.id,
+          ac.code,
+          ac.status,
+          ac.school_id,
+          ac.first_used_at,
+          ac.expires_at,
+          ac.created_at,
+          s.email AS school_name
+        FROM access_codes ac
+        LEFT JOIN schools s ON s.id = ac.school_id
+        ORDER BY ac.created_at DESC
+      `);
+
       res.json(rows);
     } catch (err) {
-      console.log(err);
-      res.status(500).send({ error: "Internal server error" });
+      console.error("Error fetching access codes:", err);
+      res.status(500).json({ error: "Internal server error" });
     }
   }
 );
+
 
 // Create a new access code
 router.post(
@@ -305,89 +437,76 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
-      const isAdminUser: boolean = await isAdmin(token);
-      if (!isAdminUser) {
-        return res.status(403).send({ error: "Access denied. Admins only" });
-      }
-      const { code, school_id } = req.body;
 
+      // Admin check
+      const isAdminUser = await isAdmin(token);
+      if (!isAdminUser) {
+        return res.status(403).json({ error: "Access denied. Admins only" });
+      }
+
+      const { code } = req.body;
+
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ error: "Access code is required" });
+      }
+
+      // Check duplicate code
       const { rows } = await pool.query(
-        "select * from access_codes where code = $1",
+        "SELECT 1 FROM access_codes WHERE code = $1 LIMIT 1",
         [code]
       );
+
       if (rows.length > 0) {
-        return res
-          .status(409)
-          .send({
-            error: "Access code already exists. Please use a different code.",
-          });
+        return res.status(409).json({
+          error: "Access code already exists",
+        });
       }
 
-      const { rows: schoolRows } = await pool.query(
-        "select * from access_codes where school_id = $1",
-        [school_id]
-      );
+      // Insert WITHOUT school_id
+      await pool.query("INSERT INTO access_codes (code) VALUES ($1)", [code]);
 
-      if (schoolRows.length > 0) {
-        return res
-          .status(409)
-          .send({ error: "School has assigned an access code already." });
-      }
-
-      const { rows: schoolCheckRows } = await pool.query(
-        "select * from schools where id = $1",
-        [school_id]
-      );
-
-      if (schoolCheckRows.length === 0) {
-        return res
-          .status(404)
-          .send({ error: "School not found with the provided school_id" });
-      }
-
-      await pool.query(
-        "insert into access_codes (code, school_id) values ($1, $2)",
-        [code, school_id]
-      );
-      res.send({ success: "Access code created successfully" });
+      return res.status(201).json({
+        success: "Access code created successfully",
+      });
     } catch (err) {
-      console.log(err);
-      res.status(500).send({ error: "Internal server error" });
+      console.error("Create access code error:", err);
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 );
+
 
 // Get code details by code string
-router.get(
-  "/access-codes/:code",
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const token = req.cookies?.token;
-      const isAdminUser: boolean = await isAdmin(token);
-      if (!isAdminUser) {
-        return res.status(403).send({ error: "Access denied. Admins only" });
-      }
-      const { code } = req.params;
-      if (!code) {
-        return res.status(400).send({ error: "Access code is required" });
-      }
-      const { rows } = await pool.query(
-        "select * from access_codes where code = $1",
-        [code]
-      );
-      if (rows.length === 0) {
-        return res.status(404).send({ error: "Access code not found" });
-      }
-      res.json(rows[0]);
-    } catch (err) {
-      console.log(err);
-      res.status(500).send({ error: "Internal server error" });
-    }
-  }
-);
+// router.get(
+//   "/access-codes/:code",
+//   authenticateToken,
+//   async (req: Request, res: Response) => {
+//     try {
+//       const token = req.cookies?.token;
+//       const isAdminUser: boolean = await isAdmin(token);
+//       if (!isAdminUser) {
+//         return res.status(403).send({ error: "Access denied. Admins only" });
+//       }
+//       const { code } = req.params;
+//       if (!code) {
+//         return res.status(400).send({ error: "Access code is required" });
+//       }
+//       const { rows } = await pool.query(
+//         "select * from access_codes where code = $1",
+//         [code]
+//       );
+//       if (rows.length === 0) {
+//         return res.status(404).send({ error: "Access code not found" });
+//       }
+//       res.json(rows[0]);
+//     } catch (err) {
+//       console.log(err);
+//       res.status(500).send({ error: "Internal server error" });
+//     }
+//   }
+// );
 
-//Delete an access code by code string
+//Mark as expired an access code by id
 router.delete(
   "/access-codes/:code",
   authenticateToken,
@@ -400,7 +519,7 @@ router.delete(
       }
       const { code } = req.params;
       const deleteResult = await pool.query(
-        "delete from access_codes where code = $1",
+        "update access_codes set status = 'EXPIRED' where id = $1",
         [code]
       );
       if (deleteResult.rowCount === 0) {
@@ -439,25 +558,25 @@ router.get('/schools' , authenticateToken , async (req : Request , res : Respons
 
 
 
-// Get a specific school by ID
-router.get('/school/:id' , authenticateToken , async (req : Request , res : Response) => {
-  try{
-    const token = req.cookies?.token;
-    const isAdminUser : boolean = await isAdmin(token);
-    if(!isAdminUser) {
-      return res.status(403).send({error : "Access denied. Admins only"});
-    }
-    const {id} = req.params;
-    const {rows} = await pool.query("select * from schools where id = $1" , [id]);
-    if(rows.length === 0) {
-      return res.status(404).send({error : "School not found"});
-    }
-    res.json(rows[0]);
-  }catch(err) {
-    console.log(err);
-    res.status(500).send({error : "Internal server error"});
-  }
-});
+// // Get a specific school by ID
+// router.get('/school/:id' , authenticateToken , async (req : Request , res : Response) => {
+//   try{
+//     const token = req.cookies?.token;
+//     const isAdminUser : boolean = await isAdmin(token);
+//     if(!isAdminUser) {
+//       return res.status(403).send({error : "Access denied. Admins only"});
+//     }
+//     const {id} = req.params;
+//     const {rows} = await pool.query("select * from schools where id = $1" , [id]);
+//     if(rows.length === 0) {
+//       return res.status(404).send({error : "School not found"});
+//     }
+//     res.json(rows[0]);
+//   }catch(err) {
+//     console.log(err);
+//     res.status(500).send({error : "Internal server error"});
+//   }
+// });
 
 
 // Update subscription status of a school manually by Admin
@@ -531,16 +650,6 @@ router.patch(
     }
   }
 );
-
-
-
-
-
-
-
-
-
-
 
 
 

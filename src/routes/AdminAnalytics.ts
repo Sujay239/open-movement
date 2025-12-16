@@ -1,122 +1,163 @@
-import { Request, Response } from "express";
-import { Router } from "express";
-import { pool } from "../db";
+import { Router, Request, Response } from "express";
+import { pool } from "../db"; // Your DB connection
 import { authenticateToken } from "../middlewares/authenticateToken";
-import decodeJwt from "../middlewares/decodeToken";
 
 const router = Router();
 
-// Get all stats teacher profile views (Admin only)
+// Helper to get Postgres interval from query param
+const getInterval = (range: string) => {
+  switch (range) {
+    case "24h":
+      return "1 day";
+    case "30d":
+      return "30 days";
+    case "90d":
+      return "90 days";
+    case "7d":
+    default:
+      return "7 days";
+  }
+};
+
 router.get("/", authenticateToken, async (req: Request, res: Response) => {
   try {
-    const token = req.cookies?.token;
-    if (!token) {
-      return res.status(400).send("No token provided.");
-    }
-    const is_user_admin = await isAdmin(token);
-    if (!is_user_admin) {
-      return res.status(403).send({ error: "Access denied. Admins only." });
-    }
+    const range = (req.query.range as string) || "7d";
+    const interval = getInterval(range);
 
-    const query = `SELECT tv.id,tv.teacher_id,t.full_name AS teacher_name,t.teacher_code,tv.school_id,s.name AS school_name,tv.viewed_at FROM teacher_views tv LEFT JOIN teachers t ON t.id = tv.teacher_id LEFT JOIN schools s ON s.id = tv.school_id ORDER BY tv.viewed_at DESC;
-        `;
+    // --- 1. OVERVIEW STATS ---
+    // We run multiple counts in parallel for speed
+    const statsQuery = `
+      SELECT
+        (SELECT COUNT(*) FROM teacher_views WHERE viewed_at > NOW() - $1::INTERVAL) as views,
+        (SELECT COUNT(*) FROM requests WHERE requested_at > NOW() - $1::INTERVAL) as requests,
+        (SELECT COUNT(DISTINCT school_id) FROM teacher_views WHERE viewed_at > NOW() - $1::INTERVAL) as active_schools
+    `;
 
-    const { rows } = await pool.query(query);
+    // --- 2. CHART DATA (Group by Day) ---
+    // Postgres specific: generate_series ensures we have a row for every day, even if 0 views
+    const chartQuery = `
+      WITH dates AS (
+          SELECT generate_series(
+            DATE(NOW() - $1::INTERVAL),
+            DATE(NOW()),
+            '1 day'::interval
+          )::date AS date
+      )
+      SELECT
+        TO_CHAR(d.date, 'Dy') as name, -- Mon, Tue...
+        TO_CHAR(d.date, 'YYYY-MM-DD') as full_date,
+        COALESCE(v.count, 0) as views,
+        COALESCE(r.count, 0) as requests
+      FROM dates d
+      LEFT JOIN (
+        SELECT DATE(viewed_at) as day, COUNT(*) as count
+        FROM teacher_views
+        WHERE viewed_at > NOW() - $1::INTERVAL
+        GROUP BY DATE(viewed_at)
+      ) v ON d.date = v.day
+      LEFT JOIN (
+        SELECT DATE(requested_at) as day, COUNT(*) as count
+        FROM requests
+        WHERE requested_at > NOW() - $1::INTERVAL
+        GROUP BY DATE(requested_at)
+      ) r ON d.date = r.day
+      ORDER BY d.date ASC;
+    `;
 
-    const formatted = rows.map((r: any) => ({
-      id: r.id,
-      teacher_id: r.teacher_id,
-      teacher_name: r.teacher_name ?? null,
-      teacher_code: r.teacher_code ?? null,
-      school_id: r.school_id,
-      school_name: r.school_name ?? null,
-      viewed_at: r.viewed_at ? new Date(r.viewed_at).toLocaleString() : null,
+    // --- 3. TOP SCHOOLS ---
+    const schoolsQuery = `
+      SELECT s.name, s.country as location, COUNT(v.id) as views
+      FROM teacher_views v
+      JOIN schools s ON v.school_id = s.id
+      WHERE v.viewed_at > NOW() - $1::INTERVAL
+      GROUP BY s.id
+      ORDER BY views DESC
+      LIMIT 5
+    `;
+
+    // --- 4. TOP TEACHERS ---
+    const teachersQuery = `
+      SELECT t.teacher_code as code, t.full_name as name, COUNT(v.id) as hits
+      FROM teacher_views v
+      JOIN teachers t ON v.teacher_id = t.id
+      WHERE v.viewed_at > NOW() - $1::INTERVAL
+      GROUP BY t.id
+      ORDER BY hits DESC
+      LIMIT 5
+    `;
+
+    // --- 5. REGION DATA ---
+    const regionQuery = `
+      SELECT
+        COALESCE(s.region, s.country, 'Other') as name,
+        COUNT(v.id) as value
+      FROM teacher_views v
+      JOIN schools s ON v.school_id = s.id
+      WHERE v.viewed_at > NOW() - $1::INTERVAL
+      GROUP BY 1
+      ORDER BY value DESC
+      LIMIT 5
+    `;
+
+    // EXECUTE ALL QUERIES
+    const [statsRes, chartRes, schoolsRes, teachersRes, regionRes] =
+      await Promise.all([
+        pool.query(statsQuery, [interval]),
+        pool.query(chartQuery, [interval]),
+        pool.query(schoolsQuery, [interval]),
+        pool.query(teachersQuery, [interval]),
+        pool.query(regionQuery, [interval]),
+      ]);
+
+    // Format Stats
+    const viewsCount = parseInt(statsRes.rows[0].views);
+    const requestsCount = parseInt(statsRes.rows[0].requests);
+    const activeSchoolsCount = parseInt(statsRes.rows[0].active_schools);
+    const conversionRate =
+      viewsCount > 0 ? ((requestsCount / viewsCount) * 100).toFixed(1) : 0;
+
+    // Add Colors to Regions (Frontend expects specific colors)
+    const regionColors = [
+      "#3b82f6",
+      "#10b981",
+      "#f59e0b",
+      "#64748b",
+      "#8b5cf6",
+    ];
+    const formattedRegions = regionRes.rows.map((r, i) => ({
+      ...r,
+      value: parseInt(r.value),
+      color: regionColors[i % regionColors.length],
     }));
 
-    return res.send(formatted);
-  } catch (err) {
-    console.log(err);
-    res.status(400).send({ error: "Something went wrong." });
+    // FINAL RESPONSE
+    res.json({
+      stats: {
+        totalViews: viewsCount,
+        requests: requestsCount,
+        activeSchools: activeSchoolsCount,
+        conversion: conversionRate,
+      },
+      chartData: chartRes.rows.map((r) => ({
+        date: r.name, // "Mon"
+        fullDate: r.full_date,
+        views: parseInt(r.views),
+        requests: parseInt(r.requests),
+      })),
+      topSchools: schoolsRes.rows.map((r) => ({
+        ...r,
+        views: parseInt(r.views),
+      })),
+      topTeachers: teachersRes.rows.map((r) => ({
+        ...r,
+        hits: parseInt(r.hits),
+      })),
+      regionData: formattedRegions,
+    });
+  } catch (error) {
+    console.error("Analytics Error:", error);
+    res.status(500).json({ error: "Server error fetching analytics" });
   }
 });
 
-// Get analytics of teacher profile views by teacher ID (Admin only)
-router.get(
-  "/teachers/:teacherId",
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const token = req.cookies?.token;
-      if (!token) {
-        return res.status(400).send("No token provided.");
-      }
-      const is_user_admin = await isAdmin(token);
-      if (!is_user_admin) {
-        return res.status(403).send({ error: "Access denied. Admins only." });
-      }
-      const { teacherId } = req.params;
-  
-        const query = `SELECT tv.id,tv.teacher_id,t.full_name AS teacher_name,t.teacher_code,tv.school_id,s.name AS school_name,tv.viewed_at FROM teacher_views tv LEFT JOIN teachers t ON t.id = tv.teacher_id LEFT JOIN schools s ON s.id = tv.school_id WHERE tv.teacher_id = $1 ORDER BY tv.viewed_at DESC;
-        `;
-
-      const { rows } = await pool.query(query, [teacherId]);
-      const formatted = rows.map((r: any) => ({
-        id: r.id,
-        teacher_id: r.teacher_id,
-        teacher_name: r.teacher_name ?? null,
-        teacher_code: r.teacher_code ?? null,
-        school_id: r.school_id,
-        school_name: r.school_name ?? null,
-        viewed_at: r.viewed_at ? new Date(r.viewed_at).toLocaleString() : null,
-      }));
-      return res.send(formatted);
-    } catch (err) {
-      console.log(err);
-      res.status(400).send({ error: "Something went wrong." });
-    }
-  }
-);
-
-// All analytics of schools viewing a particular teacher profile (Admin only)
-router.get(
-  "/schools/:schoolId",
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const token = req.cookies?.token;
-      if (!token) {
-        return res.status(400).send("No token provided.");
-      }
-      const is_user_admin = await isAdmin(token);
-      if (!is_user_admin) {
-        return res.status(403).send({ error: "Access denied. Admins only." });
-      }
-      const { schoolId } = req.params;
-
-        const query = `SELECT tv.id,tv.teacher_id,t.full_name AS teacher_name,t.teacher_code,tv.school_id,s.name AS school_name,tv.viewed_at FROM teacher_views tv LEFT JOIN teachers t ON t.id = tv.teacher_id LEFT JOIN schools s ON s.id = tv.school_id WHERE tv.school_id = $1 ORDER BY tv.viewed_at DESC;
-        `;
-
-      const { rows } = await pool.query(query, [schoolId]);
-      const formatted = rows.map((r: any) => ({
-        id: r.id,
-        teacher_id: r.teacher_id,
-        teacher_name: r.teacher_name ?? null,
-        teacher_code: r.teacher_code ?? null,
-        school_id: r.school_id,
-        school_name: r.school_name ?? null,
-        viewed_at: r.viewed_at ? new Date(r.viewed_at).toLocaleString() : null,
-      }));
-      return res.send(formatted);
-    } catch (err) {
-      console.log(err);
-      res.status(400).send({ error: "Something went wrong." });
-    }
-  }
-);
-
-// Helper function to check if the user is an admin
-async function isAdmin(token: string): Promise<boolean> {
-  const decodedTokenData: any = await decodeJwt(token);
-  return decodedTokenData && decodedTokenData.role === "admin" ? true : false;
-}
 export default router;

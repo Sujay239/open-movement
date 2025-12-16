@@ -252,52 +252,114 @@ router.post(
   "/use-access-code",
   authenticateToken,
   async (req: Request, res: Response) => {
+    const client = await pool.connect();
+
     try {
       const { code } = req.body;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ error: "Access code is required" });
+      }
+
       const token = req.cookies?.token;
       const school: any = await decodeJwt(token);
 
-      await pool.query("BEGIN");
-
-      const { rows } = await pool.query(
-        "select * from access_codes where code = $1",
-        [code]
-      );
-      const accessSchool = rows[0];
-
-      if (accessSchool.status !== "UNUSED") {
-        return res.status(409).send({
-          error: "Code is already used. please try with different code.",
-        });
+      if (!school?.id) {
+        return res.status(401).json({ error: "Invalid token" });
       }
 
-      if (accessSchool.school_id !== school.id) {
-        return res
-          .status(401)
-          .send({ error: "Please use the coreect code to access" });
+      await client.query("BEGIN");
+
+      const { rows: currentSchool } = await client.query(
+        "select subscription_status,subscription_plan,subscription_end_at from schools where id = $1" , [school.id]
+      );
+
+      if (
+        currentSchool[0].subscription_status !== "NO_SUBSCRIPTION" ||
+        currentSchool[0].subscription_plan !== null ||
+        currentSchool[0].subscription_end_at !== null
+      ) {
+        await client.query('ROLLBACK');
+        return res.status(409).send({error:'You already use paid subscription'});
       }
 
-      await pool.query(
-        "update access_codes set first_used_at = NOW(), expires_at =  NOW() + INTERVAL '24 hours', status = 'ACTIVE' where code = $1",
+      // 1️⃣ Check access code
+      const { rows: codeRows } = await client.query(
+        "SELECT * FROM access_codes WHERE code = $1",
         [code]
       );
 
-      //Also update the school table to set subscription_started_at and subscription_end_at to time stamp
-      await pool.query(
-        "update schools set subscription_started_at = NOW(), subscription_end_at = NOW() + INTERVAL '24 hours', subscription_status = 'TRIAL' where id = $1",
+      if (codeRows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Invalid access code" });
+      }
+
+      const accessCode = codeRows[0];
+
+      // 2️⃣ Check if school already used a trial
+      const { rows: schoolCodeRows } = await client.query(
+        "SELECT 1 FROM access_codes WHERE school_id = $1",
         [school.id]
       );
 
-      await pool.query("COMMIT");
+      if (schoolCodeRows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: "You already used your trial access.",
+        });
+      }
 
-      return res.send({ success: "Your Trial preriod started for 24-hours" });
+      // 3️⃣ Check code status
+      if (accessCode.status !== "UNUSED") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: "Code is already used. Please try a different code.",
+        });
+      }
+
+      // 4️⃣ Activate access code
+      await client.query(
+        `
+        UPDATE access_codes
+        SET
+          first_used_at = NOW(),
+          expires_at = NOW() + INTERVAL '24 hours',
+          status = 'ACTIVE',
+          school_id = $2
+        WHERE code = $1
+        `,
+        [code, school.id]
+      );
+
+      // 5️⃣ Update school subscription
+      await client.query(
+        `
+        UPDATE schools
+        SET
+          subscription_started_at = NOW(),
+          subscription_end_at = NOW() + INTERVAL '24 hours',
+          subscription_status = 'TRIAL'
+        WHERE id = $1
+        `,
+        [school.id]
+      );
+
+      await client.query("COMMIT");
+
+      return res.json({
+        success: "Your trial period has started for 24 hours",
+      });
     } catch (err) {
-      console.log(err);
-      await pool.query("ROLLBACK");
-      res.status(401).send("Something went wrong please try again.");
+      await client.query("ROLLBACK");
+      console.error("Use access code error:", err);
+      return res.status(500).json({
+        error: "Something went wrong. Please try again.",
+      });
+    } finally {
+      client.release();
     }
   }
 );
+
 
 router.post("/logout", (req, res) => {
   try {

@@ -8,6 +8,7 @@ import mail from "./routes/apiRoutes";
 import verification from "./middlewares/verificationPage";
 import adminAuthRoutes from "./routes/adminAuth";
 import adminRoutes from "./routes/Admin";
+import adminStats from "./routes/adminStats";
 import adminAnalyticsRoutes from "./routes/AdminAnalytics";
 import requestAnalyticsRoutes from "./routes/RequestAnalytics";
 import teacherPortalRoutes from "./routes/portalTeachers";
@@ -20,22 +21,18 @@ import { sendMail } from "./utils/mailsender";
 import { encodePass } from "./middlewares/passwordEconder";
 import schoolRoutes from "./routes/schoolRoutes";
 import decodeJwt from "./middlewares/decodeToken";
+import { authenticateToken } from "./middlewares/authenticateToken";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.use(cors(
-  { origin:"http://localhost:5174",
+  { origin:"http://localhost:5173",
     credentials: true,
   }
 ));
-// app.use(
-//   cors({
-//     origin: "https://49kmlh8b-5173.inc1.devtunnels.ms",
-//     credentials: true,
-//   })
-// );
+
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -50,12 +47,13 @@ app.use("/adminAuth", adminAuthRoutes);
 
 //Admin routes
 app.use("/admin", adminRoutes);
+app.use("/admin", adminStats);
 
-//Admin Analytics routes
+//Admin requests routes
 app.use("/admin/requests", requestAnalyticsRoutes);
 
-//Admin Analytics routes
-app.use("/admin/views", adminAnalyticsRoutes);
+//Admin analytics routes
+app.use("/api/admin/analytics", adminAnalyticsRoutes);
 
 //Teacher Portal routes
 app.use("/portal/teachers", teacherPortalRoutes);
@@ -70,7 +68,7 @@ app.use('/school' , schoolRoutes);
 
 // If using app directly:
 app.get(
-  "/subscription/status",
+  "/subscription/status", authenticateToken ,
   async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
@@ -247,6 +245,59 @@ app.post("/reset-password/:token", async (req: Request, res: Response) => {
     res.status(500).send("Error occurred while resetting password.");
   }
 });
+
+app.post(
+  "/subscription/cancel",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const token = req.cookies?.token;
+      const decoded: any = await decodeJwt(token);
+
+      const schoolId = decoded?.id;
+      if (!schoolId) {
+        return res.status(401).json({ error: "Invalid token" });
+      }
+
+      // Optional: check current status
+      const { rows } = await pool.query(
+        "SELECT subscription_status FROM schools WHERE id = $1",
+        [schoolId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ error: "School not found" });
+      }
+
+      if (rows[0].subscription_status === "CANCELLED") {
+        return res.status(400).json({
+          error: "Subscription already cancelled",
+        });
+      }
+
+      // Cancel subscription
+      await pool.query(
+        `
+        UPDATE schools
+        SET
+          subscription_status = 'NO_SUBSCRIPTION',
+          subscription_end_at = NOW()
+        WHERE id = $1
+        `,
+        [schoolId]
+      );
+
+      return res.json({
+        success: "Subscription cancelled successfully",
+      });
+    } catch (err) {
+      console.error("Cancel subscription error:", err);
+      return res.status(500).json({
+        error: "Internal server error",
+      });
+    }
+  }
+);
 
 // app.delete("/delete-school/:email", async (req: Request, res: Response) => {
 //   try {

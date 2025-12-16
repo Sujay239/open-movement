@@ -43,14 +43,19 @@ router.post("/login", async (req: Request, res: Response) => {
 
 
 
-router.post("/register", async (req: Request, res: Response) => {
-  const { name, email, password } = req.body;
+router.post("/register", authenticateToken ,  async (req: Request, res: Response) => {
+  const { full_name, email, password } = req.body;
     try {
+      const token = req.cookies?.token;
+      const Admin = await isAdmin(token);
+      if(!Admin) {
+        return res.status(401).send("Admin only. you cannot add admins.");
+      }
     const hashedPassword = await encodePass(password);
 
     await pool.query(
       "INSERT INTO admins (full_name, email, password_hash) VALUES ($1, $2, $3)",
-      [name, email, hashedPassword]
+      [full_name, email, hashedPassword]
     );
     res.json({ success: "Admin registered successfully" });
   } catch (error) {
@@ -59,5 +64,11 @@ router.post("/register", async (req: Request, res: Response) => {
   }
 });
 
+
+// Helper function to check if the user is an admin
+async function isAdmin(token: string): Promise<boolean> {
+  const decodedTokenData: any = await decodeJwt(token);
+  return decodedTokenData && decodedTokenData.role === "admin" ? true : false;
+}
 
 export default router;

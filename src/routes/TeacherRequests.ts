@@ -1,10 +1,13 @@
-import { Request, Response } from "express";
-import { Router } from "express";
+import { Request, Response, Router } from "express";
 import { pool } from "../db";
 import { authenticateToken } from "../middlewares/authenticateToken";
 import decodeJwt from "../middlewares/decodeToken";
+
 const router = Router();
 
+/**
+ * GET all teacher requests for a school
+ */
 router.get(
   "/teachers",
   authenticateToken,
@@ -12,6 +15,7 @@ router.get(
     try {
       const token = req.cookies?.token;
       const data: any = await decodeJwt(token);
+
       const query = `
         SELECT
           r.id,
@@ -49,11 +53,9 @@ router.get(
       const formatted = rows.map((r: any) => ({
         id: r.id,
         teacher_id: r.teacher_id,
-        school_id : r.school_id,
+        school_id: r.school_id,
         teacher_code: r.teacher_code,
-        requested_at: r.requested_at
-          ? new Date(r.requested_at).toLocaleString()
-          : null,
+        requested_at: r.requested_at, // ✅ RAW / ISO DATE
         status: r.status,
         school_message: r.school_message,
         admin_notes: r.admin_notes,
@@ -80,14 +82,17 @@ router.get(
             : null,
       }));
 
-      return res.send(formatted);
+      return res.json(formatted);
     } catch (error) {
       console.error("Error fetching teacher requests:", error);
-      res.status(500).send({ error: "Internal server error" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 );
 
+/**
+ * GET single request by ID
+ */
 router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
   try {
     const token = req.cookies?.token;
@@ -95,35 +100,35 @@ router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
     const requestId = req.params.id;
 
     const query = `
-      SELECT
-        r.id,
-        r.teacher_id,
-        t.teacher_code,
-        t.full_name,
-        t.email,
-        t.phone,
-        t.cv_link,
-        t.current_job_title,
-        t.subjects,
-        t.highest_qualification,
-        t.current_country,
-        t.current_region,
-        t.visa_status,
-        t.notice_period,
-        t.will_move_sem1,
-        t.will_move_sem2,
-        t.years_experience,
-        t.preferred_regions,
-        t.profile_status,
-        r.requested_at,
-        r.status,
-        r.school_message,
-        COALESCE(r.admin_notes, 'No response by admin still now') AS admin_notes
-      FROM requests r
-      JOIN teachers t ON t.id = r.teacher_id
-      WHERE r.id = $1 AND r.school_id = $2
-      LIMIT 1;
-    `;
+        SELECT
+          r.id,
+          r.teacher_id,
+          t.teacher_code,
+          t.full_name,
+          t.email,
+          t.phone,
+          t.cv_link,
+          t.current_job_title,
+          t.subjects,
+          t.highest_qualification,
+          t.current_country,
+          t.current_region,
+          t.visa_status,
+          t.notice_period,
+          t.will_move_sem1,
+          t.will_move_sem2,
+          t.years_experience,
+          t.preferred_regions,
+          t.profile_status,
+          r.requested_at,
+          r.status,
+          r.school_message,
+          COALESCE(r.admin_notes, 'No response by admin still now') AS admin_notes
+        FROM requests r
+        JOIN teachers t ON t.id = r.teacher_id
+        WHERE r.id = $1 AND r.school_id = $2
+        LIMIT 1;
+      `;
 
     const { rows } = await pool.query(query, [requestId, data.id]);
 
@@ -134,13 +139,12 @@ router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
     }
 
     const r = rows[0];
-    const response = {
+
+    return res.json({
       id: r.id,
       teacher_id: r.teacher_id,
       teacher_code: r.teacher_code,
-      requested_at: r.requested_at
-        ? new Date(r.requested_at).toLocaleString()
-        : null,
+      requested_at: r.requested_at, // ✅ RAW / ISO DATE
       status: r.status,
       school_message: r.school_message,
       admin_notes: r.admin_notes,
@@ -165,15 +169,16 @@ router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
               profile_status: r.profile_status,
             }
           : null,
-    };
-
-    return res.status(200).json(response);
+    });
   } catch (error) {
     console.error("Error fetching request by id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
 
+/**
+ * CREATE request
+ */
 router.post(
   "/teachers/:teacherId",
   authenticateToken,
@@ -185,16 +190,15 @@ router.post(
       const { message } = req.body;
 
       const query = `
-      INSERT INTO requests (teacher_id, school_id, school_message)
-      VALUES ($1, $2, $3)
-      RETURNING id, teacher_id, school_id, requested_at, status;
-    `;
+        INSERT INTO requests (teacher_id, school_id, school_message)
+        VALUES ($1, $2, $3)
+        RETURNING id, teacher_id, school_id, requested_at, status;
+      `;
 
       const { rows } = await pool.query(query, [
         teacherId,
         data.id,
-        message ||
-          "Interested in this teacher and would like to connect.",
+        message || "Interested in this teacher and would like to connect.",
       ]);
 
       return res.status(201).json({
@@ -208,41 +212,41 @@ router.post(
   }
 );
 
-
+/**
+ * CLOSE request (SECURED)
+ */
 router.delete(
-  "/teachers/:id/:teacherId/:schoolId",
+  "/teachers/:id/:teacherId",
+  authenticateToken,
   async (req: Request, res: Response) => {
     try {
-      const { id,  teacherId,schoolId } = req.params;
+      const token = req.cookies?.token;
+      const data: any = await decodeJwt(token);
 
-      // Validate required params
-      if (!id || !schoolId) {
-        return res
-          .status(400)
-          .json({ error: "Missing id or schoolId parameter" });
-      }
+      const { id, teacherId } = req.params;
 
       const query = `
-      UPDATE requests
-      SET status = $1
-      WHERE id = $2 AND school_id = $4 AND teacher_id = $3
-      RETURNING *;
-    `;
+        UPDATE requests
+        SET status = 'CLOSED'
+        WHERE id = $1 AND teacher_id = $2 AND school_id = $3
+        RETURNING id;
+      `;
 
-      const values = ["CLOSED", id,teacherId, schoolId];
+      const result = await pool.query(query, [
+        id,
+        teacherId,
+        data.id, // ✅ schoolId from JWT
+      ]);
 
-      const result = await pool.query(query, values);
       if (result.rowCount === 0) {
         return res.status(404).json({
-          error: "Request not found or does not belong to this school",
+          error: "Request not found or not authorized",
         });
       }
 
-      return res.status(200).json({
-        message: "Request closed successfully"
-      });
-    } catch (err) {
-      console.error("Error closing request:", err);
+      return res.json({ message: "Request closed successfully" });
+    } catch (error) {
+      console.error("Error closing request:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

@@ -31,12 +31,12 @@ router.post("/send-mail", async (req: Request, res: Response) => {
       email,
       "Verify your email address",
       `<p>Hi ${school.name},
-Welcome to Open Movement! Please verify your email address to complete your registration.
-Click the link below to confirm your email: http://localhost:5000/verifyemail/${school.verify_token}
-If you have any trouble with the link, please copy and paste it into your web browser's address bar.
-Thanks,
-The Open movement Team
-http://loclahost:5173 </p>` // or build nicer HTML
+        Welcome to Open Movement! Please verify your email address to complete your registration.
+        Click the link below to confirm your email: <a href = '${process.env.CLIENT_URL}/verifyemail/${school.verify_token}'>Click here </a>
+          If you have any trouble with the link, please copy and paste it into your web browser's address bar.
+        Thanks,
+        The Open movement Team
+        ${process.env.FRONTEND} </p>`
     );
 
     return res.json({ success: true, message: "Mail sent successfully" });
