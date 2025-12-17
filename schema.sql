@@ -166,6 +166,8 @@ CREATE TABLE IF NOT EXISTS teachers (
 
     -- category                    TEXT,
 
+    bio                             TEXT,
+
     current_school_name         TEXT,
 
     profile_status              teacher_profile_status NOT NULL DEFAULT 'ACTIVE',

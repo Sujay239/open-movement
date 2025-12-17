@@ -27,11 +27,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-app.use(cors(
-  { origin:"http://localhost:5173",
-    credentials: true,
-  }
-));
+app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 
 app.use(cookieParser());
 app.use(express.json());
@@ -64,11 +60,12 @@ app.use("/requests", requestRoutes);
 //sending mail to verify email id
 app.use("/api", mail);
 
-app.use('/school' , schoolRoutes);
+app.use("/school", schoolRoutes);
 
 // If using app directly:
 app.get(
-  "/subscription/status", authenticateToken ,
+  "/subscription/status",
+  authenticateToken,
   async (req: Request, res: Response) => {
     try {
       const token = req.cookies?.token;
@@ -104,14 +101,16 @@ app.get(
     } catch (err: any) {
       console.error("Error fetching subscription status:", err);
       // If decodeJwt threw because token invalid, return 401 for clarity
-      if (err?.message?.toLowerCase()?.includes("token") || err?.name === "JsonWebTokenError") {
+      if (
+        err?.message?.toLowerCase()?.includes("token") ||
+        err?.name === "JsonWebTokenError"
+      ) {
         return res.status(401).json({ error: "Invalid or expired token" });
       }
       return res.status(500).json({ error: "Internal server error" });
     }
   }
 );
-
 
 app.get("/verifyemail/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
@@ -172,9 +171,9 @@ app.get("/payment-failed", (req, res) => {
   });
 });
 
-app.post("/forgot-password/:email", async (req: Request, res: Response) => {
+app.post("/forgot-password", async (req: Request, res: Response) => {
   try {
-    const { email } = req.params;
+    const { email } = req.body;
     const result = await pool.query("SELECT id FROM schools WHERE email = $1", [
       email,
     ]);
@@ -238,7 +237,6 @@ app.post("/reset-password/:token", async (req: Request, res: Response) => {
     );
     await pool.query("COMMIT");
     res.send("Password has been reset successfully.");
-
   } catch (err) {
     await pool.query("ROLLBACK");
     console.error(err);
@@ -250,59 +248,109 @@ app.post(
   "/subscription/cancel",
   authenticateToken,
   async (req: Request, res: Response) => {
+    const client = await pool.connect();
+
     try {
       const token = req.cookies?.token;
       const decoded: any = await decodeJwt(token);
-
       const schoolId = decoded?.id;
+
       if (!schoolId) {
         return res.status(401).json({ error: "Invalid token" });
       }
 
-      // Optional: check current status
-      const { rows } = await pool.query(
+      await client.query("BEGIN");
+
+      // Check current subscription status
+      const { rows } = await client.query(
         "SELECT subscription_status FROM schools WHERE id = $1",
         [schoolId]
       );
 
       if (rows.length === 0) {
+        await client.query("ROLLBACK");
         return res.status(404).json({ error: "School not found" });
       }
 
       if (rows[0].subscription_status === "CANCELLED") {
+        await client.query("ROLLBACK");
         return res.status(400).json({
           error: "Subscription already cancelled",
         });
       }
 
       // Cancel subscription
-      await pool.query(
+      await client.query(
         `
         UPDATE schools
         SET
           subscription_status = 'NO_SUBSCRIPTION',
+          subscription_plan = null,
           subscription_end_at = NOW()
         WHERE id = $1
         `,
         [schoolId]
       );
 
+      // Expire access codes
+      await client.query(
+        `
+        UPDATE access_codes
+        SET status = 'EXPIRED'
+        WHERE school_id = $1
+        `,
+        [schoolId]
+      );
+
+      await client.query("COMMIT");
+
       return res.json({
-        success: "Subscription cancelled successfully",
+        success: true,
+        message: "Subscription cancelled successfully",
       });
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error("Cancel subscription error:", err);
+
       return res.status(500).json({
         error: "Internal server error",
       });
+    } finally {
+      client.release();
     }
   }
 );
 
-// app.delete("/delete-school/:email", async (req: Request, res: Response) => {
+app.post("/use-access-code", async (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({ error: "Code is required" });
+    }
+
+    const { rows } = await pool.query(
+      "SELECT id FROM access_codes WHERE code = $1 AND status = 'UNUSED'",
+      [code]
+    );
+
+    if (rows.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "Invalid or already used access code" });
+    }
+
+    return res.status(200).json({ message: "Access code is valid" });
+  } catch (err) {
+    console.error("Error verifying access code:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// app.delete("/delete-school", async (req: Request, res: Response) => {
 //   try {
-//     const { email } = req.params;
-//     await pool.query("DELETE FROM schools WHERE email = $1", [email]);
+//     // const { email } = req.params;
+//     await pool.query('TRUNCATE TABLE schools RESTART IDENTITY CASCADE');
 //     res.send("Successfully deleted the school");
 //   } catch (err) {
 //     res.status(401).send("Error occurred in deleting school data.");

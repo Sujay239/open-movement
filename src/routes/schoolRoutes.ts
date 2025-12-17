@@ -60,7 +60,7 @@ router.patch(
 
         // Email uniqueness check
         if (email !== undefined) {
-          const emailCheck : any = await client.query(
+          const emailCheck: any = await client.query(
             "SELECT id FROM schools WHERE email = $1 AND id <> $2 LIMIT 1",
             [email, schoolId]
           );
@@ -109,11 +109,7 @@ router.patch(
             address,
             city,
             country,
-            region,
-            subscription_status,
-            subscription_plan,
-            subscription_started_at,
-            subscription_end_at;
+            region
         `;
 
         values.push(schoolId);

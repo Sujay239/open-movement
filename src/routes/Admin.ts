@@ -13,7 +13,7 @@ const router = Router();
 //        ADMIN - Teacher Management Routes
 // ========================================================================================================
 
-//Get all teachers
+// Get all teachers
 router.get(
   "/teachers",
   authenticateToken,
@@ -33,7 +33,7 @@ router.get(
   }
 );
 
-// Add a new teachers
+// Add a new teacher
 router.post(
   "/teachers",
   authenticateToken,
@@ -62,11 +62,15 @@ router.post(
         years_experience,
         preferred_regions,
         is_visible_in_school_portal = true,
+        profile_status = "ACTIVE",
+        current_school_name,
+        bio = "",
       } = req.body;
 
       await pool.query(
         `INSERT INTO teachers
-           (teacher_code, full_name, email, phone, cv_link, current_job_title, subjects, highest_qualification, current_country, current_region, visa_status, notice_period, will_move_sem1, will_move_sem2, years_experience, preferred_regions, is_visible_in_school_portal) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+           (teacher_code, full_name, email, phone, cv_link, current_job_title, subjects, highest_qualification, current_country, current_region, visa_status, notice_period, will_move_sem1, will_move_sem2, years_experience, preferred_regions, is_visible_in_school_portal, profile_status,current_school_name,bio)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,$19,$20)`,
         [
           teacher_code,
           full_name,
@@ -85,6 +89,9 @@ router.post(
           years_experience,
           preferred_regions,
           is_visible_in_school_portal,
+          profile_status,
+          current_school_name,
+          bio
         ]
       );
       res.send({ success: "Teacher added successfully" });
@@ -95,149 +102,6 @@ router.post(
   }
 );
 
-
-router.post(
-  "/teachers/bulk",
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    const client = await pool.connect();
-
-    try {
-      const token = req.cookies?.token;
-      const isAdminUser: boolean = await isAdmin(token);
-
-      if (!isAdminUser) {
-        return res.status(403).json({
-          error: "Access denied. Admins only",
-        });
-      }
-
-      const { teachers } = req.body;
-
-      if (!Array.isArray(teachers) || teachers.length === 0) {
-        return res.status(400).json({
-          error: "Teachers array is required",
-        });
-      }
-
-      await client.query("BEGIN");
-
-      const query = `
-        INSERT INTO teachers
-        (
-          teacher_code,
-          full_name,
-          email,
-          phone,
-          cv_link,
-          current_job_title,
-          subjects,
-          highest_qualification,
-          current_country,
-          current_region,
-          visa_status,
-          notice_period,
-          will_move_sem1,
-          will_move_sem2,
-          years_experience,
-          preferred_regions,
-          is_visible_in_school_portal
-        )
-        VALUES
-        (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9,
-          $10, $11, $12, $13, $14, $15, $16, $17
-        )
-      `;
-
-      for (const teacher of teachers) {
-        const {
-          teacher_code,
-          full_name,
-          email,
-          phone,
-          cv_link,
-          current_job_title,
-          subjects,
-          highest_qualification,
-          current_country,
-          current_region,
-          visa_status,
-          notice_period,
-          will_move_sem1 = false,
-          will_move_sem2 = false,
-          years_experience,
-          preferred_regions,
-          is_visible_in_school_portal = true,
-        } = teacher;
-
-        await client.query(query, [
-          teacher_code,
-          full_name,
-          email,
-          phone,
-          cv_link,
-          current_job_title,
-          subjects,
-          highest_qualification,
-          current_country,
-          current_region,
-          visa_status,
-          notice_period,
-          will_move_sem1,
-          will_move_sem2,
-          years_experience,
-          preferred_regions,
-          is_visible_in_school_portal,
-        ]);
-      }
-
-      await client.query("COMMIT");
-
-      return res.status(201).json({
-        success: `${teachers.length} teachers added successfully`,
-      });
-    } catch (err) {
-      await client.query("ROLLBACK");
-      console.error("Bulk teacher insert error:", err);
-      return res.status(500).json({
-        error: "Internal server error",
-      });
-    } finally {
-      client.release();
-    }
-  }
-);
-
-
-// // Get a specific teacher by ID
-// router.get(
-//   "/teachers/:id",
-//   authenticateToken,
-//   async (req: Request, res: Response) => {
-//     try {
-//       const token = req.cookies?.token;
-//       const isAdminUser: boolean = await isAdmin(token);
-//       if (!isAdminUser) {
-//         return res.status(403).send({ error: "Access denied. Admins only" });
-//       }
-//       const { id } = req.params;
-//       const { rows } = await pool.query(
-//         "SELECT * FROM teachers WHERE id = $1",
-//         [id]
-//       );
-//       if (rows.length === 0) {
-//         return res.status(404).send({ error: "Teacher not found" });
-//       }
-//       res.json(rows[0]);
-//     } catch (err) {
-//       console.log(err);
-//       res.status(500).send({ error: "Internal server error" });
-//     }
-//   }
-// );
-
-//Update a specific teacher by ID
 router.patch(
   "/teachers/:id",
   authenticateToken,
@@ -245,7 +109,6 @@ router.patch(
     try {
       const token = req.cookies?.token;
 
-      // 1. Move isAdmin check to a cleaner guard clause
       const isAdminUser: boolean = await isAdmin(token);
       if (!isAdminUser) {
         return res.status(403).send({ error: "Access denied. Admins only" });
@@ -253,7 +116,6 @@ router.patch(
 
       const { id } = req.params;
 
-      // 2. Fetch existing data
       const { rows } = await pool.query(
         "SELECT * FROM teachers WHERE id = $1",
         [id]
@@ -265,8 +127,7 @@ router.patch(
 
       const existingTeacher = rows[0];
 
-      // 3. Prepare data (Fallback to existing if body is undefined)
-      // Note: removed teacher_code from here to prevent changing the ID
+      // Prepare data (Fallback to existing if body is undefined)
       const {
         full_name = existingTeacher.full_name,
         email = existingTeacher.email,
@@ -281,12 +142,16 @@ router.patch(
         notice_period = existingTeacher.notice_period,
         will_move_sem1 = existingTeacher.will_move_sem1,
         will_move_sem2 = existingTeacher.will_move_sem2,
+        profile_status = existingTeacher.profile_status,
         years_experience = existingTeacher.years_experience,
         preferred_regions = existingTeacher.preferred_regions,
         is_visible_in_school_portal = existingTeacher.is_visible_in_school_portal,
+        current_school_name = existingTeacher.current_school_name,
+        bio = existingTeacher.bio,
       } = req.body;
 
-      // 4. Update Query
+      // Ensure parameters match SQL placeholders exactly
+      // $17 is ID, $18 is profile_status
       const updateResult = await pool.query(
         `UPDATE teachers SET
           full_name = $1,
@@ -305,6 +170,9 @@ router.patch(
           years_experience = $14,
           preferred_regions = $15,
           is_visible_in_school_portal = $16,
+          profile_status = $18,
+          current_school_name = $19,
+          bio = $20,
           updated_at = NOW()
         WHERE id = $17
         RETURNING *;`,
@@ -326,10 +194,12 @@ router.patch(
           preferred_regions,
           is_visible_in_school_portal,
           id,
+          profile_status,
+          current_school_name,
+          bio
         ]
       );
 
-      // Return the updated object so the frontend can update its state immediately
       res.json({
         success: "Teacher updated successfully",
         data: updateResult.rows[0],
@@ -341,7 +211,7 @@ router.patch(
   }
 );
 
-// Archive (partially deleted) a teacher by ID (data remain preserve in archived_teachers table)
+// Archive (partially deleted) a teacher by ID
 router.delete(
   "/teachers/:id",
   authenticateToken,
@@ -368,7 +238,7 @@ router.delete(
   }
 );
 
-//Get all archieved teachers archived by the admin
+//Get all archieved teachers
 router.get(
   "/archived-teachers",
   authenticateToken,
@@ -415,7 +285,8 @@ router.get(
           ac.first_used_at,
           ac.expires_at,
           ac.created_at,
-          s.email AS school_name
+          s.name AS school_name,
+          s.email
         FROM access_codes ac
         LEFT JOIN schools s ON s.id = ac.school_id
         ORDER BY ac.created_at DESC
@@ -428,7 +299,6 @@ router.get(
     }
   }
 );
-
 
 // Create a new access code
 router.post(
@@ -475,37 +345,6 @@ router.post(
   }
 );
 
-
-// Get code details by code string
-// router.get(
-//   "/access-codes/:code",
-//   authenticateToken,
-//   async (req: Request, res: Response) => {
-//     try {
-//       const token = req.cookies?.token;
-//       const isAdminUser: boolean = await isAdmin(token);
-//       if (!isAdminUser) {
-//         return res.status(403).send({ error: "Access denied. Admins only" });
-//       }
-//       const { code } = req.params;
-//       if (!code) {
-//         return res.status(400).send({ error: "Access code is required" });
-//       }
-//       const { rows } = await pool.query(
-//         "select * from access_codes where code = $1",
-//         [code]
-//       );
-//       if (rows.length === 0) {
-//         return res.status(404).send({ error: "Access code not found" });
-//       }
-//       res.json(rows[0]);
-//     } catch (err) {
-//       console.log(err);
-//       res.status(500).send({ error: "Internal server error" });
-//     }
-//   }
-// );
-
 //Mark as expired an access code by id
 router.delete(
   "/access-codes/:code",
@@ -533,51 +372,29 @@ router.delete(
   }
 );
 
-
 // ========================================================================================================
 //        ADMIN - Schools routes
 // ========================================================================================================
 
-
-
 // Get all schools by Admin
-router.get('/schools' , authenticateToken , async (req : Request , res : Response) => {
-  try{
-    const token = req.cookies?.token;
-    const isAdminUser : boolean = await isAdmin(token);
-    if(!isAdminUser) {
-      return res.status(403).send({error : "Access denied. Admins only"});
+router.get(
+  "/schools",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const token = req.cookies?.token;
+      const isAdminUser: boolean = await isAdmin(token);
+      if (!isAdminUser) {
+        return res.status(403).send({ error: "Access denied. Admins only" });
+      }
+      const { rows } = await pool.query("select * from schools");
+      res.json(rows);
+    } catch (err) {
+      console.log(err);
+      res.status(500).send({ error: "Internal server error" });
     }
-    const {rows} = await pool.query("select * from schools");
-    res.json(rows);
-  }catch(err) {
-    console.log(err);
-    res.status(500).send({error : "Internal server error"});
   }
-});
-
-
-
-// // Get a specific school by ID
-// router.get('/school/:id' , authenticateToken , async (req : Request , res : Response) => {
-//   try{
-//     const token = req.cookies?.token;
-//     const isAdminUser : boolean = await isAdmin(token);
-//     if(!isAdminUser) {
-//       return res.status(403).send({error : "Access denied. Admins only"});
-//     }
-//     const {id} = req.params;
-//     const {rows} = await pool.query("select * from schools where id = $1" , [id]);
-//     if(rows.length === 0) {
-//       return res.status(404).send({error : "School not found"});
-//     }
-//     res.json(rows[0]);
-//   }catch(err) {
-//     console.log(err);
-//     res.status(500).send({error : "Internal server error"});
-//   }
-// });
-
+);
 
 // Update subscription status of a school manually by Admin
 router.patch(
@@ -650,6 +467,7 @@ router.patch(
     }
   }
 );
+
 
 
 

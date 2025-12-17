@@ -9,6 +9,8 @@ import { generateToken } from "../middlewares/generateToken";
 import decodeJwt from "../middlewares/decodeToken";
 import { JwtPayload, TokenExpiredError } from "jsonwebtoken";
 import { sendMail } from "../utils/mailsender";
+import { access } from "fs";
+import { error } from "console";
 const cookies = require("cookie-parser");
 
 const router = Router();
@@ -20,6 +22,7 @@ const registerSchema = z.object({
   password: z.string().min(6).max(128),
   country: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
+  access_code : z.string().optional().nullable()
 });
 
 const loginSchema = z.object({
@@ -45,12 +48,10 @@ router.post("/register", async (req: Request, res: Response) => {
       [email.trim().toLowerCase()]
     );
     if (sch.rows.length > 0) {
-      return res
-        .status(409)
-        .send({
-          error:
-            "School with this email already exists. Try with different email address.",
-        });
+      return res.status(409).send({
+        error:
+          "School with this email already exists. Try with different email address.",
+      });
     }
     if (!hash) {
       return res.status(403).send({ error: "password not hashed" });
@@ -84,7 +85,7 @@ router.post("/register", async (req: Request, res: Response) => {
     If you have any trouble with the link, please copy and paste it into your web browser's address bar.
     Thanks,
     The Open movement Team
-    http://loclahost:5173 </p>` // or build nicer HTML
+    ${process.env.FRONTEND} </p>` // or build nicer HTML
     );
 
     res.send({
@@ -116,11 +117,9 @@ router.post("/login", async (req: Request, res: Response) => {
     );
 
     if (!rows || rows.length === 0) {
-      return res
-        .status(401)
-        .send({
-          error: `School not found associated with email: ${normalEmail} \n Please Register yourself first.`,
-        });
+      return res.status(401).send({
+        error: `School not found associated with email: ${normalEmail} \n Please Register yourself first.`,
+      });
     }
 
     const school = rows[0];
@@ -177,7 +176,6 @@ router.get("/me", authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
-
 router.get("/protect", async (req: Request, res: Response) => {
   try {
     const token = req.cookies?.token;
@@ -221,7 +219,6 @@ router.get("/protect", async (req: Request, res: Response) => {
     });
   }
 });
-
 
 router.post("/isLoggedin", async (req: Request, res: Response) => {
   try {
@@ -270,7 +267,8 @@ router.post(
       await client.query("BEGIN");
 
       const { rows: currentSchool } = await client.query(
-        "select subscription_status,subscription_plan,subscription_end_at from schools where id = $1" , [school.id]
+        "select subscription_status,subscription_plan,subscription_end_at from schools where id = $1",
+        [school.id]
       );
 
       if (
@@ -278,8 +276,10 @@ router.post(
         currentSchool[0].subscription_plan !== null ||
         currentSchool[0].subscription_end_at !== null
       ) {
-        await client.query('ROLLBACK');
-        return res.status(409).send({error:'You already use paid subscription'});
+        await client.query("ROLLBACK");
+        return res
+          .status(409)
+          .send({ error: "You already use paid subscription" });
       }
 
       // 1️⃣ Check access code
@@ -343,6 +343,8 @@ router.post(
         [school.id]
       );
 
+
+
       await client.query("COMMIT");
 
       return res.json({
@@ -354,6 +356,211 @@ router.post(
       return res.status(500).json({
         error: "Something went wrong. Please try again.",
       });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+
+router.post("/register/code", async (req: Request, res: Response) => {
+   const parse = registerSchema.safeParse(req.body);
+    if (!parse.success) {
+      return res
+        .status(400)
+        .json({ error: "Invalid input", details: parse.error.issues });
+    }
+
+
+  const client = await pool.connect();
+  try {
+     const {
+       name,
+       contact_name,
+       country,
+       region,
+       email,
+       password,
+       access_code,
+     } = parse.data;
+
+    await client.query("BEGIN");
+
+    // 1. Validate access code (lock row to prevent reuse)
+
+
+     const sch = await client.query(
+       "SELECT * FROM schools WHERE email = $1 LIMIT 1",
+       [email.trim().toLowerCase()]
+     );
+     if (sch.rows.length > 0) {
+      await client.query('ROLLBACK');
+       return res.status(409).send({
+         error:
+           "School with this email already exists. Please login and use the access code",
+       });
+     }
+
+    const codeResult = await client.query(
+      `
+      SELECT id
+      FROM access_codes
+      WHERE code = $1
+        AND status = 'UNUSED'
+      FOR UPDATE
+      `,
+      [access_code]
+    );
+
+    if (codeResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Invalid or used access code." });
+    }
+
+    const accessCodeId = codeResult.rows[0].id;
+
+    // 2. Hash password
+    const passwordHash = await encodePass(password);
+
+    const userResult = await client.query(
+      `
+      INSERT INTO schools (
+        name,
+        contact_name,
+        country,
+        region,
+        email,
+        password_hash
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+      `,
+      [name, contact_name, country, region, email.toLowerCase(), passwordHash]
+    );
+
+    const school = userResult.rows[0];
+
+    // 4. Mark access code as used
+   const result =  await client.query(
+      `
+       UPDATE access_codes
+        SET
+          first_used_at = NOW(),
+          expires_at = NOW() + INTERVAL '24 hours',
+          status = 'ACTIVE',
+          school_id = $1
+        WHERE code = $2
+      `,
+      [school.id, access_code]
+    );
+
+    if (result.rowCount !== 1) {
+      return res.status(408).send("Access code update failed");
+    }
+
+    await client.query(`
+      UPDATE schools
+        SET
+          subscription_started_at = NOW(),
+          subscription_end_at = NOW() + INTERVAL '24 hours',
+          subscription_status = 'TRIAL'
+        WHERE id = $1
+      ` , [school.id]);
+         await sendMail(
+           school.email,
+           "Verify your email address",
+           `<p>Hi ${school.name},
+    Welcome to Open Movement! Please verify your email address to complete your registration.
+    Click the link below to confirm your email: ${process.env.CLIENT_URL}/verifyemail/${school.verify_token}
+    If you have any trouble with the link, please copy and paste it into your web browser's address bar.
+    Thanks,
+    The Open movement Team
+    ${process.env.FRONTEND} </p>` // or build nicer HTML
+         );
+    await client.query("COMMIT");
+
+    return res.status(201).json({
+      message: "Registration successful. Please kindly login",
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error." });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+router.post(
+  "/update-password",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    const client = await pool.connect();
+
+    try {
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Both passwords are required" });
+      }
+        const token = req.cookies?.token;
+        if(!token){
+          return res.status(401).send({error : "Token not provided"});
+        }
+        const data = await decodeJwt(token);
+      const email = data.email;
+
+      await client.query("BEGIN");
+
+      const { rows } = await client.query(
+        "SELECT id, password_hash FROM schools WHERE email = $1",
+        [email]
+      );
+
+      if (rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "School not found" });
+      }
+
+      const school = rows[0];
+
+      // ✅ verify current password
+      const isValid = await passwordMatcher(currentPassword, school.password_hash);
+
+      if (!isValid) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+
+      // ✅ hash new password
+      const newHash = await encodePass(newPassword);
+
+      const updateResult = await client.query(
+        `
+        UPDATE schools
+        SET password_hash = $1,
+            updated_at = NOW()
+        WHERE id = $2
+        `,
+        [newHash, school.id]
+      );
+
+      if (updateResult.rowCount !== 1) {
+        await client.query('ROLLBACK');
+        return res.status(404).send({error : "Password update failed"});
+      }
+
+      await client.query("COMMIT");
+
+      return res.json({ message: "Password updated successfully" });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error(err);
+      return res
+        .status(500)
+        .json({ error: "Internal server error. Please try again later." });
     } finally {
       client.release();
     }

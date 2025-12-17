@@ -46,7 +46,9 @@ export default function renderVerificationPage(
         justify-content: center;
         margin: 0 auto 16px;
         font-size: 32px;
-        background: ${isSuccess ? "rgba(34, 197, 94, 0.15)" : "rgba(248, 113, 113, 0.15)"};
+        background: ${
+          isSuccess ? "rgba(34, 197, 94, 0.15)" : "rgba(248, 113, 113, 0.15)"
+        };
         color: ${isSuccess ? "#4ade80" : "#fca5a5"};
       }
       h1 {
@@ -68,9 +70,13 @@ export default function renderVerificationPage(
         padding: 4px 10px;
         border-radius: 999px;
         margin-bottom: 10px;
-        background: ${isSuccess ? "rgba(34, 197, 94, 0.1)" : "rgba(248, 113, 113, 0.1)"};
+        background: ${
+          isSuccess ? "rgba(34, 197, 94, 0.1)" : "rgba(248, 113, 113, 0.1)"
+        };
         color: ${isSuccess ? "#22c55e" : "#f97373"};
-        border: 1px solid ${isSuccess ? "rgba(34, 197, 94, 0.35)" : "rgba(248, 113, 113, 0.35)"};
+        border: 1px solid ${
+          isSuccess ? "rgba(34, 197, 94, 0.35)" : "rgba(248, 113, 113, 0.35)"
+        };
       }
       .button-row {
         display: flex;
@@ -128,7 +134,9 @@ export default function renderVerificationPage(
       </div>
 
       <div class="status-label">
-        <span style="font-size: 0.9rem;">${isSuccess ? "Verified" : "Verification Failed"}</span>
+        <span style="font-size: 0.9rem;">${
+          isSuccess ? "Verified" : "Verification Failed"
+        }</span>
       </div>
 
       <h1>${isSuccess ? "Email verified 🎉" : "Email verification issue"}</h1>
@@ -136,7 +144,7 @@ export default function renderVerificationPage(
       <p>${message}</p>
 
       <div class="button-row">
-        <a href="/" class="btn btn-primary">
+        <a href="${process.env.FRONTEND}/login" class="btn btn-primary">
           Go to Home
         </a>
       </div>

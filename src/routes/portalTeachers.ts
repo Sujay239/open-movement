@@ -10,7 +10,7 @@ const router = Router();
 router.get("/", authenticateToken, async (req: Request, res: Response) => {
   try {
     const { rows } =
-      await pool.query(`SELECT id,teacher_code,highest_qualification,years_experience,current_country,visa_status FROM teachers WHERE profile_status <> 'INACTIVE' AND is_visible_in_school_portal = TRUE ORDER BY created_at DESC;
+      await pool.query(`SELECT id,teacher_code,highest_qualification,years_experience,current_country,visa_status, profile_status,bio FROM teachers WHERE is_visible_in_school_portal = TRUE ORDER BY created_at DESC;
 `);
     if (rows.length === 0) {
       return res.status(404).send({ error: "No teachers found" });
@@ -25,7 +25,7 @@ router.get("/", authenticateToken, async (req: Request, res: Response) => {
 router.get("/:id", authenticateToken, async (req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(
-      `SELECT teacher_code,highest_qualification,current_country,current_region,years_experience,subjects FROM teachers WHERE profile_status <> 'INACTIVE' AND is_visible_in_school_portal = TRUE and id = $1`,
+      `SELECT teacher_code,highest_qualification,current_country,current_region,years_experience,subjects,profile_status FROM teachers WHERE is_visible_in_school_portal = TRUE and id = $1`,
       [req.params.id]
     );
     if (rows.length === 0) {

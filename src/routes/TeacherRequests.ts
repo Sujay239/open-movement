@@ -26,7 +26,7 @@ router.get(
           t.phone,
           t.cv_link,
           t.current_job_title,
-          array_to_json(t.subjects::text[]) AS subjects,
+          subjects,
           t.highest_qualification,
           t.current_country,
           t.current_region,
@@ -235,7 +235,7 @@ router.delete(
       const result = await pool.query(query, [
         id,
         teacherId,
-        data.id, // ✅ schoolId from JWT
+        data.id, 
       ]);
 
       if (result.rowCount === 0) {

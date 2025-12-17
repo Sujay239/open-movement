@@ -64,6 +64,80 @@ router.post("/register", authenticateToken ,  async (req: Request, res: Response
   }
 });
 
+router.get("/all", authenticateToken , async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.token;
+    const Admin = await isAdmin(token);
+    if (!Admin) {
+      return res.status(401).send("Admin only. you cannot have the access.");
+    }
+    const { rows } = await pool.query(
+      `
+      SELECT
+        id,
+        full_name,
+        email,
+        role,
+        created_at,
+        updated_at
+      FROM admins
+      ORDER BY created_at DESC
+      `
+    );
+
+    return res.json(rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      error: "Failed to fetch admins",
+    });
+  }
+});
+
+router.delete("/delete/:id", authenticateToken ,  async (req: Request, res: Response) => {
+
+  const token = req.cookies?.token;
+  const Admin = await isAdmin(token);
+  if (!Admin) {
+    return res.status(401).send("Admin only. you cannot have the acess.");
+  }
+  const { id } = req.params;
+
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({
+      error: "Invalid admin ID",
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM admins
+      WHERE id = $1
+      RETURNING id, full_name, email
+      `,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Admin not found",
+      });
+    }
+
+    return res.json({
+      message: "Admin deleted successfully",
+      admin: result.rows[0],
+    });
+  } catch (err: any) {
+    console.error(err);
+
+    return res.status(500).json({
+      error: "Failed to delete admin",
+    });
+  }
+});
+
 
 // Helper function to check if the user is an admin
 async function isAdmin(token: string): Promise<boolean> {
