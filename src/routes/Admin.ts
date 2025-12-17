@@ -25,7 +25,7 @@ router.get(
         return res.status(403).send({ error: "Access denied. Admins only" });
       }
 
-      const { rows } = await pool.query("SELECT * FROM teachers");
+      const { rows } = await pool.query("SELECT * FROM teachers ORDER BY created_at DESC");
       res.json(rows);
     } catch (err) {
       res.status(500).send({ error: "Internal server error" });

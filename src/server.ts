@@ -22,6 +22,7 @@ import { encodePass } from "./middlewares/passwordEconder";
 import schoolRoutes from "./routes/schoolRoutes";
 import decodeJwt from "./middlewares/decodeToken";
 import { authenticateToken } from "./middlewares/authenticateToken";
+// import fileUploader from "./routes/File";
 
 dotenv.config();
 
@@ -61,6 +62,14 @@ app.use("/requests", requestRoutes);
 app.use("/api", mail);
 
 app.use("/school", schoolRoutes);
+
+
+
+// File uploader if needed
+// app.use("/file", fileUploader);
+
+
+
 
 // If using app directly:
 app.get(
@@ -321,6 +330,7 @@ app.post(
   }
 );
 
+
 app.post("/use-access-code", async (req: Request, res: Response) => {
   try {
     const { code } = req.body;
@@ -346,6 +356,103 @@ app.post("/use-access-code", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+
+
+
+app.post("/contact/submit", async (req : Request, res  :Response) => {
+  try {
+    // 1. Destructure the data sent from the frontend
+    const { name, email, phone, school, country, region, address, message } =
+      req.body;
+      
+    if (!name || !email || !country) {
+      return res
+        .status(400)
+        .json({ error: "Missing required fields (Name, Email, or Country)" });
+    }
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">New Contact Form Submission</h2>
+        <p>You have received a new inquiry from the website contact form.</p>
+
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <tr style="background-color: #f3f4f6;">
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">Full Name</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">Email</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">
+              <a href="mailto:${email}">${email}</a>
+            </td>
+          </tr>
+          <tr style="background-color: #f3f4f6;">
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">Phone</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${
+              phone || "N/A"
+            }</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">Country</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${country}</td>
+          </tr>
+          <tr style="background-color: #f3f4f6;">
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">Region</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${
+              region || "N/A"
+            }</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">School</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${
+              school || "N/A"
+            }</td>
+          </tr>
+          <tr style="background-color: #f3f4f6;">
+            <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold;">Address</td>
+            <td style="padding: 10px; border: 1px solid #e5e7eb;">${
+              address || "N/A"
+            }</td>
+          </tr>
+        </table>
+
+        <div style="margin-top: 20px; padding: 15px; background-color: #f9fafb; border-left: 4px solid #2563eb;">
+          <strong>Message:</strong><br/>
+          <p style="white-space: pre-wrap;">${
+            message || "No message provided."
+          }</p>
+        </div>
+
+        <p style="font-size: 12px; color: #6b7280; margin-top: 30px;">
+          This email was sent from your website's contact form.
+        </p>
+      </div>
+    `;
+
+    // 4. Send the email to YOUR Admin Email
+    // Replace 'process.env.ADMIN_EMAIL' with your actual admin email variable
+    await sendMail(
+      process.env.ADMIN_EMAIL || "admin@yourschool.com",
+      `New Inquiry from ${name} - ${country}`,
+      emailHtml
+    );
+
+    // 5. Send Success Response
+    return res
+      .status(200)
+      .json({ success: true, message: "Message sent successfully" });
+  } catch (error) {
+    console.error("Contact Form Error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+
+
 
 // app.delete("/delete-school", async (req: Request, res: Response) => {
 //   try {

@@ -10,7 +10,7 @@ const router = Router();
 router.get("/", authenticateToken, async (req: Request, res: Response) => {
   try {
     const { rows } =
-      await pool.query(`SELECT id,teacher_code,highest_qualification,years_experience,current_country,visa_status, profile_status,bio FROM teachers WHERE is_visible_in_school_portal = TRUE ORDER BY created_at DESC;
+      await pool.query(`SELECT id,teacher_code,highest_qualification,years_experience,current_country,visa_status, profile_status,bio FROM teachers WHERE is_visible_in_school_portal = TRUE ORDER BY RANDOM();
 `);
     if (rows.length === 0) {
       return res.status(404).send({ error: "No teachers found" });
